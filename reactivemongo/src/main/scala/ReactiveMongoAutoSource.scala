@@ -144,8 +144,12 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
   val writer: Writes[T] = implicitly[Writes[T]]
   val writerWithId = Writes[(T, BSONObjectID)] {
     case (t, id) =>
-      Json.obj("id" -> id.stringify) ++
-      writer.writes(t).as[JsObject]
+      val ser = writer.writes(t).as[JsObject].updateAllKeyNodes{
+        case ( _ \ "_id", value ) => ("id" -> value \ "$oid")
+      }
+
+      if((__ \ "id")(ser).isEmpty) ser.as[JsObject] ++ Json.obj("id" -> id.stringify)
+      else ser
   }
   val idWriter = Writes[BSONObjectID] { id =>
     Json.obj("id" -> id.stringify)
@@ -200,14 +204,15 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
 
   private def parseQuery[T](request: Request[T]): JsValue = {
     request.queryString.get("q") match {
-      case None => request.body match {
-        case AnyContentAsJson(json) => json
-        case AnyContentAsEmpty => Json.obj()
-        case _ => throw new RuntimeException("Body in GET isn't Json")
-      }
+      case None =>
+        request.body match {
+          case AnyContentAsJson(json) => json
+          case AnyContentAsEmpty => Json.obj()
+          case _ => throw new RuntimeException("Body in Request isn't Json")
+        }
 
-      case Some(q)   => 
-        q.headOption.map{ str => 
+      case Some(q)   =>
+        q.headOption.map{ str =>
           try {
             Json.parse(str)
           } catch { case e: Throwable => throw new RuntimeException("queryparam 'q' isn't Json") }

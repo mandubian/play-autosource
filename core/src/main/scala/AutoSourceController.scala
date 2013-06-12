@@ -39,7 +39,6 @@ trait AutoSourceController[Id] extends Controller {
   def batchInsert: EssentialAction
   def batchDelete: EssentialAction
   def batchUpdate: EssentialAction
-
 }
 
 /**
@@ -56,6 +55,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
   private val Slash        = "/?".r
   private val Id           = "/([^/]+)/?".r
   private val Partial      = "/([^/]+)/partial".r
+  private val Find         = "/find/?".r
   private val Batch        = "/batch/?".r
   private val Stream       = "/stream/?".r
 
@@ -81,6 +81,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
           case ("PUT",    Batch())     => batchUpdate
 
           case ("POST",   Batch())     => batchInsert
+          case ("POST",   Find())      => find
           case ("POST",   Slash())     => insert
 
           case ("DELETE", Batch())     => batchDelete

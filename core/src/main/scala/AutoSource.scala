@@ -34,5 +34,4 @@ trait AutoSource[T, Id, Query, Update] {
   def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int]
   def batchDelete(sel: Query)(implicit ctx: ExecutionContext): Future[Unit]
   def batchUpdate(sel: Query, upd: Update)(implicit ctx: ExecutionContext): Future[Unit]
-
 }
