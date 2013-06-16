@@ -26,6 +26,8 @@ import play.api.libs.iteratee.Enumerator
   * The only parameterized type is the Id of records
   */
 trait AutoSourceController[Id] extends Controller {
+  /**
+    */
   def insert: EssentialAction
 
   def get(id: Id): EssentialAction

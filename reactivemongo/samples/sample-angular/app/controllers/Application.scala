@@ -77,6 +77,10 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
     super.delete(id)
   }
 
+  override def get(id: BSONObjectID) = Authenticated { _ =>
+    super.get(id)
+  }
+
   def index = Action {
     Ok(views.html.index("ok"))
   }

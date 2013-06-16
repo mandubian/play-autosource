@@ -147,7 +147,6 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
       val ser = writer.writes(t).as[JsObject].updateAllKeyNodes{
         case ( _ \ "_id", value ) => ("id" -> value \ "$oid")
       }
-
       if((__ \ "id")(ser).isEmpty) ser.as[JsObject] ++ Json.obj("id" -> id.stringify)
       else ser
   }
@@ -155,7 +154,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     Json.obj("id" -> id.stringify)
   }
 
-  def insert = Action(parse.json){ request =>
+  def insert: EssentialAction = Action(parse.json){ request =>
     Json.fromJson[T](request.body)(reader).map{ t =>
       Async{
         res.insert(t).map{ id => Ok(Json.toJson(id)(idWriter)) }
@@ -163,7 +162,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def get(id: BSONObjectID) = Action{
+  def get(id: BSONObjectID): EssentialAction = Action{
     Async{
       res.get(id).map{
         case None    => NotFound(s"ID ${id.stringify} not found")
@@ -172,13 +171,13 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }
   }
 
-  def delete(id: BSONObjectID) = Action{
+  def delete(id: BSONObjectID): EssentialAction = Action{
     Async{
       res.delete(id).map{ le => Ok(Json.toJson(id)(idWriter)) }
     }
   }
 
-  def update(id: BSONObjectID) = Action(parse.json){ request =>
+  def update(id: BSONObjectID): EssentialAction = Action(parse.json){ request =>
     Json.fromJson[T](request.body)(reader).map{ t =>
       Async{
         res.update(id, t).map{ _ => Ok(Json.toJson(id)(idWriter)) }
@@ -186,7 +185,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def updatePartial(id: BSONObjectID) = Action(parse.json){ request =>
+  def updatePartial(id: BSONObjectID): EssentialAction = Action(parse.json){ request =>
     Json.fromJson[JsObject](request.body)(updateReader).map{ upd =>
       Async{
         res.updatePartial(id, upd).map{ _ => Ok(Json.toJson(id)(idWriter)) }
@@ -194,7 +193,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def batchInsert = Action(parse.json){ request =>
+  def batchInsert: EssentialAction = Action(parse.json){ request =>
     Json.fromJson[Seq[T]](request.body)(Reads.seq(reader)).map{ elems =>
       Async{
         res.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
@@ -220,19 +219,21 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }
   }
 
-  def find = Action{ request =>
+  def find: EssentialAction = Action{ request =>
     val json: JsValue = parseQuery(request)
     val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
     Json.fromJson[JsObject](json)(queryReader).map{ js =>
       Async{
-        res.find(js, limit, skip).map( s => Ok(Json.toJson(s)(Writes.seq(writerWithId))) )
+        res.find(js, limit, skip).map{ s =>
+          Ok(Json.toJson(s)(Writes.seq(writerWithId)))
+        }
       }
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def findStream = Action { request =>
+  def findStream: EssentialAction = Action { request =>
     val json: JsValue = parseQuery(request)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
@@ -246,7 +247,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def batchDelete = Action{ request =>
+  def batchDelete: EssentialAction = Action{ request =>
     val json: JsValue = parseQuery(request)
     Json.fromJson[JsObject](json)(queryReader).map{ js =>
       Async {
@@ -255,7 +256,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def batchUpdate = Action{ request =>
+  def batchUpdate: EssentialAction = Action{ request =>
     val json: JsValue = parseQuery(request)
     Json.fromJson[(JsObject, JsObject)](json)(batchReader).map{
       case (q, upd) => Async {
