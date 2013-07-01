@@ -1,0 +1,22 @@
+@(message: String)
+
+@main("Welcome to Play 2.1") {
+
+    <div ng-controller="PersonCtrl">
+      <label for="name">name:</label><input ng-model="createForm.name"/>
+      <label for="age">age:</label><input ng-model="createForm.age" type="number"/>
+      <button ng-click="create()">Create new person</button>
+      <hr/>
+      <table>
+      <thead><th>name</th><th>age</th><td>actions</td></thead>
+      <tbody ng-repeat="person in persons">
+        <tr>
+          <td><input ng-model="person.name"/></td>
+          <td><input type="number" ng-model="person.age"/></td>
+          <td><button ng-click="update(person)">Update</button><button ng-click="remove(person)">Delete</button></td>
+        </tr>
+      </tbody>
+      </div>
+    </div>
+
+}

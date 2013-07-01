@@ -21,7 +21,7 @@ object ApplicationBuild extends Build {
     settings = BuildSettings ++ Seq(
       publish      := {}
     )
-  ) aggregate(core, reactivemongo)
+  ) aggregate(core, reactivemongo, datomisca)
 
   lazy val core = Project(
     id = "core", 
@@ -44,6 +44,21 @@ object ApplicationBuild extends Build {
       libraryDependencies ++= Seq(
         "org.reactivemongo" %% "play2-reactivemongo" % "0.9",
         "org.reactivemongo" %% "reactivemongo"       % "0.9"
+      )
+    )
+  ) dependsOn(core)
+
+  lazy val datomisca = Project(
+    id = "datomisca",
+    base = file("datomisca"),
+    settings = BuildSettings ++ Seq(
+      resolvers ++= Seq(
+        "datomisca-repo snapshots" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/snapshots",
+        "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases"
+      ),
+      libraryDependencies ++= Seq(
+        "play.modules.datomisca" %% "play-datomisca" % "0.2",
+        "com.datomic" % "datomic-free" % "0.8.4007" exclude("org.slf4j", "slf4j-nop")
       )
     )
   ) dependsOn(core)
