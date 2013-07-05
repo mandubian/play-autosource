@@ -19,6 +19,6 @@ object Person {
 
 object PersonController extends CouchbaseAutoSourceController[Person] {
   val bucket = Couchbase.bucket("default")
-  override val defaultViewName = "by_name"
-  override val defaultDesignDocname = "person"
+  val defaultViewName = "by_name"
+  val defaultDesignDocname = "persons"
 }

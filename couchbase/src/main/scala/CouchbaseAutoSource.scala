@@ -43,24 +43,24 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     json \ ID match {
       case JsUndefined(_) => {
         val newJson = json ++ Json.obj(ID -> JsString(id))
-        bucket.set(id, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
+        Couchbase.set(id, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
       }
       case actualId => {
-        bucket.set(actualId.as[String], json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
+        Couchbase.set(actualId.as[String], json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
       }
     }
   }
 
   def get(id: String)(implicit ctx: ExecutionContext): Future[Option[(T, String)]] = {
-    bucket.get[T]( id )(bucket ,reader, ctx).map( _.map( v => ( v, id ) ) )(ctx)
+    Couchbase.get[T]( id )(bucket ,reader, ctx).map( _.map( v => ( v, id ) ) )(ctx)
   }
 
   def delete(id: String)(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.delete(id)(bucket, ctx).map(_ => ())
+    Couchbase.delete(id)(bucket, ctx).map(_ => ())
   }
 
   def update(id: String, t: T)(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.replace(id, t)(bucket, writer, ctx).map(_ => ())
+    Couchbase.replace(id, t)(bucket, writer, ctx).map(_ => ())
   }
 
   def updatePartial(id: String, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
@@ -68,7 +68,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
       opt.map { t =>
         val json = Json.toJson(t._1)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        bucket.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        Couchbase.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }.getOrElse(throw new RuntimeException(s"Cannot find ID $id"))
     }
   }
@@ -81,13 +81,13 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     var query = sel._2
     if (limit != 0) query = query.setLimit(limit)
     if (skip != 0) query = query.setSkip(skip)
-    bucket.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])))
+    Couchbase.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])))
   }
 
   def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, String)]] = {
     var query = sel._2
     if (skip != 0) query = query.setSkip(skip)
-    val futureEnumerator = bucket.find[T](sel._1)(query)(bucket, reader, ctx).map { l =>
+    val futureEnumerator = Couchbase.find[T](sel._1)(query)(bucket, reader, ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
       Enumerator.enumerate(l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])).grouped(size).map(_.iterator))
     }
@@ -95,7 +95,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
   }
 
   def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.find[JsObject](sel._1)(sel._2)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
+    Couchbase.find[JsObject](sel._1)(sel._2)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
       list.map { t =>
         delete((t \ ID).as[String])(ctx)
       }
@@ -103,17 +103,17 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
   }
 
   def batchUpdate(sel: (View, Query), upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.find[T](sel._1)(sel._2)(bucket, reader, ctx).map { list =>
+    Couchbase.find[T](sel._1)(sel._2)(bucket, reader, ctx).map { list =>
       list.map { t =>
         val json = Json.toJson(t)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        bucket.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        Couchbase.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }
     }
   }
 
   def view(docName: String, viewName: String)(implicit ctx: ExecutionContext): Future[View] = {
-    bucket.view(docName, viewName)(bucket, ctx)
+    Couchbase.view(docName, viewName)(bucket, ctx)
   }
 }
 
@@ -123,8 +123,8 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
 
   val bucket: CouchbaseBucket
   lazy val res = new CouchbaseAutoSource[T](bucket)
-  val defaultDesignDocname = ""
-  val defaultViewName= ""
+  val defaultDesignDocname: String
+  val defaultViewName: String
 
   val writerWithId = Writes[(T, String)] {
     case (t, id) =>
