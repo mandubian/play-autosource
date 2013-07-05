@@ -128,8 +128,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
 
   val writerWithId = Writes[(T, String)] {
     case (t, id) =>
-      Json.obj("id" -> id) ++
-        res.writer.writes(t).as[JsObject]
+        res.writer.writes(t).as[JsObject] ++ Json.obj(res.ID -> JsString(id))
   }
 
   def insert: EssentialAction = Action(parse.json) { request =>
@@ -144,7 +143,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
     Async{
       res.get(id).map{
         case None    => NotFound(s"ID '${id}' not found")
-        case Some(tid) => Ok(Json.toJson(tid._1)(res.writer))
+        case Some(tid) => Ok(Json.toJson(tid._1)(res.writer).as[JsObject] ++ Json.obj(res.ID -> JsString(id)))
       }
     }
   }
@@ -168,7 +167,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
     Async {
       res.view(queryObject.docName, queryObject.view).flatMap { view =>
         res.find((view, query))
-      }.map( s => Ok(Json.toJson(s.map(_._1))(Writes.seq(res.writer))) )
+      }.map( s => Ok(Json.toJson(s)(Writes.seq(writerWithId))))
     }
   }
 
@@ -176,9 +175,9 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
     val (queryObject, query) = QueryObject.extractQuery(request, defaultDesignDocname, defaultViewName)
     Async {
       res.view(queryObject.docName, queryObject.view).map { view =>
-        res.findStream((view, query), 0, 0).map(_.map(_._1))
+        res.findStream((view, query), 0, 0)
       }.map { s => Ok.stream(
-        s.map( it => Json.toJson(it.toSeq)(Writes.seq(res.writer)) ).andThen(Enumerator.eof) )
+        s.map( it => Json.toJson(it.toSeq)(Writes.seq(writerWithId)) ).andThen(Enumerator.eof) )
       }
     }
   }
