@@ -16,26 +16,33 @@
 package play.autosource.couchbase
 
 import play.api.libs.json._
+import play.api.libs.json.syntax._
+import play.api.libs.json.extensions._
 import play.autosource.core.{AutoSourceRouterContoller, AutoSource}
 import scala.concurrent.{Future, ExecutionContext}
 import play.api.libs.iteratee.{Iteratee, Enumerator}
 
-import org.ancelin.play2.couchbase.{Couchbase, CouchbaseBucket}
+import org.ancelin.play2.couchbase.{CouchbaseRWImplicits, Couchbase, CouchbaseBucket}
 import java.util.UUID
 import com.couchbase.client.protocol.views.{Query, View}
 import play.api.mvc._
 import org.ancelin.play2.couchbase.crud.QueryObject
 
-class CouchbaseAutoSource[T <: {def id: String}:Format](bucket: CouchbaseBucket) extends AutoSource[T, String, (View, Query), T] {
+class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[T, String, (View, Query), T] {
 
   import org.ancelin.play2.couchbase.CouchbaseImplicitConversion.Couchbase2ClientWrapper
+  import org.ancelin.play2.couchbase.CouchbaseRWImplicits._
 
   val reader: Reads[T] = implicitly[Reads[T]]
   val writer: Writes[T] = implicitly[Writes[T]]
 
   def insert(t: T)(implicit ctx: ExecutionContext): Future[String] = {
     val id = UUID.randomUUID().toString
-    bucket.set(id, t)(bucket, writer, ctx).map(_ => id)(ctx)
+    var json = writer.writes(t).as[JsObject]
+    if ((json \ "_id").asOpt[String].isEmpty) {
+      json = json ++ Json.obj("_id" -> id)
+    }
+    bucket.set(id, json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
   }
 
   def get(id: String)(implicit ctx: ExecutionContext): Future[Option[(T, String)]] = {
@@ -62,7 +69,7 @@ class CouchbaseAutoSource[T <: {def id: String}:Format](bucket: CouchbaseBucket)
     var query = sel._2
     if (limit != 0) query = query.setLimit(limit)
     if (skip != 0) query = query.setSkip(skip)
-    bucket.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, i.id)))
+    bucket.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, (Json.toJson(i)(writer) \ "id").as[String])))
   }
 
   def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, String)]] = {
@@ -70,15 +77,15 @@ class CouchbaseAutoSource[T <: {def id: String}:Format](bucket: CouchbaseBucket)
     if (skip != 0) query = query.setSkip(skip)
     val futureEnumerator = bucket.find[T](sel._1)(query)(bucket, reader, ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
-      Enumerator.enumerate(l.map(i => (i, i.id)).grouped(size).map(_.iterator))
+      Enumerator.enumerate(l.map(i => (i, (Json.toJson(i)(writer) \ "_id").as[String])).grouped(size).map(_.iterator))
     }
     Enumerator.flatten(futureEnumerator)
   }
 
   def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.find[T](sel._1)(sel._2)(bucket, reader, ctx).map { list =>
+    bucket.find[JsObject](sel._1)(sel._2)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
       list.map { t =>
-        delete(t.id)(ctx)
+        delete((t \ "_id").as[String])(ctx)
       }
     }
   }
@@ -86,7 +93,8 @@ class CouchbaseAutoSource[T <: {def id: String}:Format](bucket: CouchbaseBucket)
   def batchUpdate(sel: (View, Query), upd: T)(implicit ctx: ExecutionContext): Future[Unit] = {
     bucket.find[T](sel._1)(sel._2)(bucket, reader, ctx).map { list =>
       list.map { t =>
-        update(t.id, t)(ctx)
+        val json = Json.toJson(t)(writer)
+        update((json \ "_id").as[String], t)(ctx)
       }
     }
   }
@@ -96,7 +104,7 @@ class CouchbaseAutoSource[T <: {def id: String}:Format](bucket: CouchbaseBucket)
   }
 }
 
-abstract class CouchbaseAutoSourceController[T <: {def id: String}:Format](implicit ctx: ExecutionContext) extends AutoSourceRouterContoller[String] {
+abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionContext) extends AutoSourceRouterContoller[String] {
 
   import org.ancelin.play2.couchbase.CouchbaseImplicitConversion.Couchbase2ClientWrapper
 
