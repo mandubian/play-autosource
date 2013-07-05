@@ -16,8 +16,6 @@
 package play.autosource.couchbase
 
 import play.api.libs.json._
-import play.api.libs.json.syntax._
-import play.api.libs.json.extensions._
 import play.autosource.core.{AutoSourceRouterContoller, AutoSource}
 import scala.concurrent.{Future, ExecutionContext}
 import play.api.libs.iteratee.{Iteratee, Enumerator}
@@ -27,22 +25,30 @@ import java.util.UUID
 import com.couchbase.client.protocol.views.{Query, View}
 import play.api.mvc._
 import org.ancelin.play2.couchbase.crud.QueryObject
+import play.api.libs.json.JsUndefined
+import play.api.libs.json.JsObject
 
-class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[T, String, (View, Query), T] {
+class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[T, String, (View, Query), JsObject] {
 
   import org.ancelin.play2.couchbase.CouchbaseImplicitConversion.Couchbase2ClientWrapper
   import org.ancelin.play2.couchbase.CouchbaseRWImplicits._
 
   val reader: Reads[T] = implicitly[Reads[T]]
   val writer: Writes[T] = implicitly[Writes[T]]
+  val ID = "_id"
 
   def insert(t: T)(implicit ctx: ExecutionContext): Future[String] = {
-    val id = UUID.randomUUID().toString
-    var json = writer.writes(t).as[JsObject]
-    if ((json \ "_id").asOpt[String].isEmpty) {
-      json = json ++ Json.obj("_id" -> id)
+    val id: String = UUID.randomUUID().toString
+    val json = writer.writes(t).as[JsObject]
+    json \ ID match {
+      case JsUndefined(_) => {
+        val newJson = json ++ Json.obj(ID -> JsString(id))
+        bucket.set(id, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
+      }
+      case actualId => {
+        bucket.set(actualId.as[String], json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
+      }
     }
-    bucket.set(id, json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
   }
 
   def get(id: String)(implicit ctx: ExecutionContext): Future[Option[(T, String)]] = {
@@ -57,8 +63,14 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     bucket.replace(id, t)(bucket, writer, ctx).map(_ => ())
   }
 
-  def updatePartial(id: String, upd: T)(implicit ctx: ExecutionContext): Future[Unit] = {
-    update(id, upd)(ctx)
+  def updatePartial(id: String, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
+    get(id)(ctx).flatMap { opt =>
+      opt.map { t =>
+        val json = Json.toJson(t._1)(writer).as[JsObject]
+        val newJson = json.deepMerge(upd)
+        bucket.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+      }.getOrElse(throw new RuntimeException(s"Cannot find ID $id"))
+    }
   }
 
   def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int] = {
@@ -69,7 +81,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     var query = sel._2
     if (limit != 0) query = query.setLimit(limit)
     if (skip != 0) query = query.setSkip(skip)
-    bucket.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, (Json.toJson(i)(writer) \ "id").as[String])))
+    bucket.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])))
   }
 
   def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, String)]] = {
@@ -77,7 +89,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     if (skip != 0) query = query.setSkip(skip)
     val futureEnumerator = bucket.find[T](sel._1)(query)(bucket, reader, ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
-      Enumerator.enumerate(l.map(i => (i, (Json.toJson(i)(writer) \ "_id").as[String])).grouped(size).map(_.iterator))
+      Enumerator.enumerate(l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])).grouped(size).map(_.iterator))
     }
     Enumerator.flatten(futureEnumerator)
   }
@@ -85,16 +97,17 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
   def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
     bucket.find[JsObject](sel._1)(sel._2)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
       list.map { t =>
-        delete((t \ "_id").as[String])(ctx)
+        delete((t \ ID).as[String])(ctx)
       }
     }
   }
 
-  def batchUpdate(sel: (View, Query), upd: T)(implicit ctx: ExecutionContext): Future[Unit] = {
+  def batchUpdate(sel: (View, Query), upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
     bucket.find[T](sel._1)(sel._2)(bucket, reader, ctx).map { list =>
       list.map { t =>
-        val json = Json.toJson(t)(writer)
-        update((json \ "_id").as[String], t)(ctx)
+        val json = Json.toJson(t)(writer).as[JsObject]
+        val newJson = json.deepMerge(upd)
+        bucket.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }
     }
   }
@@ -171,7 +184,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
   }
 
   def updatePartial(id: String): EssentialAction = Action(parse.json) { request =>
-    Json.fromJson[T](request.body)(res.reader).map{ upd =>
+    Json.fromJson[JsObject](request.body)(CouchbaseRWImplicits.documentAsJsObjectReader).map{ upd =>
       Async{
         res.updatePartial(id, upd).map{ _ => Ok(Json.obj("id" -> id)) }
       }
@@ -197,7 +210,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
 
   def batchUpdate: EssentialAction = Action(parse.json) { request =>
     val (queryObject, query) = QueryObject.extractQuery(request, defaultDesignDocname, defaultViewName)
-    Json.fromJson[T](request.body)(res.reader).map{ upd =>
+    Json.fromJson[JsObject](request.body)(CouchbaseRWImplicits.documentAsJsObjectReader).map{ upd =>
       Async{
         res.view(queryObject.docName, queryObject.view).flatMap { view =>
           res.batchUpdate((view, query), upd).map{ _ => Ok("updated") }
