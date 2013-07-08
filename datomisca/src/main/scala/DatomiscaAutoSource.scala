@@ -26,7 +26,7 @@ import play.api.libs.json._
 import play.api.libs.json.syntax._
 import play.api.libs.functional.syntax._
 import play.api.libs.json.extensions._
-import play.api.libs.iteratee.Enumerator
+import play.api.libs.iteratee._
 
 import play.autosource.core._
 
@@ -76,18 +76,20 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
     Datomic.transact(AddEntity(DId(id), upd)).map{ _ => () }
   }
 
-  def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int] = {
-    /*val enum = elems.map{ t =>
-      val id = BSONObjectID.generate
-      val obj = implicitly[Writes[T]].writes(t).as[JsObject]
-      obj \ "_id" match {
-        case JsUndefined(_) => Json.obj("_id" -> id) ++ obj
-        case _ => obj
-      }
-    }
+  val BATCH_SIZE = 100
+  val batchEnumeratee: Enumeratee[T, Seq[T]] = 
+    Enumeratee.grouped(Enumeratee.take[T](BATCH_SIZE) &>> Iteratee.getChunks)
 
-    coll.bulkInsert(enum)*/
-    future{ 0 }
+  def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int] = {
+
+    (elems &> batchEnumeratee) |>>> Iteratee.foldM(0){ (acc, seq: Seq[T]) => 
+      val txData = seq.map{ t =>
+        val tempid = DId(partition)
+        DatomicMapping.toEntity(tempid)(t)
+      }
+
+      Datomic.transact(txData).map{ _ => acc+txData.length }.recover{ case e: Throwable => acc }
+    }
   }
 
   def find(sel: TypedQueryAuto0[DatomicData], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Seq[(T, Long)]] = {
@@ -104,24 +106,28 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
   }
 
   def findStream(sel: TypedQueryAuto0[DatomicData], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, Long)]] = {
-    // val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
-    // val enum = if(pageSize !=0) cursor.enumerateBulks(pageSize) else cursor.enumerateBulks
-    // enum.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
-    Enumerator()
+    var res = Datomic.q(sel, database).map{
+      case DLong(id) =>
+        val entity = database.entity(id)
+        DatomicMapping.fromEntity[T](entity) -> id
+    }
+    if(skip!=0) res = res.drop(skip)
+    if(pageSize!=0) Enumerator.enumerate(res.sliding(pageSize).map(_.toIterator))
+    else Enumerator.enumerate(Seq(res.toIterator))
   }
 
   def batchDelete(sel: TypedQueryAuto0[DatomicData])(implicit ctx: ExecutionContext): Future[Unit] = {
-    //coll.remove(sel).map( _ => () )
-    future{ () }
+    val txData = Datomic.q(sel, database).map{
+      case DLong(id) => Entity.retract(id)
+    }
+    Datomic.transact(txData).map( _ => ())
   }
 
   def batchUpdate(sel: TypedQueryAuto0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Unit] = {
-    // coll.update(
-    //   sel,
-    //   Json.obj("$set" -> upd),
-    //   multi = true
-    // ).map{ _ => () }
-    future{ () }
+    val txData = Datomic.q(sel, database).map{
+      case DLong(id) => Entity.add(DId(id), upd)
+    }
+    Datomic.transact(txData).map( _ => ())
   }
 
 }
@@ -203,12 +209,11 @@ abstract class DatomiscaAutoSourceController[T]
   }
 
   def batchInsert: EssentialAction = Action(parse.json){ request =>
-    Ok(Json.obj())
-    // Json.fromJson[Seq[T]](request.body)(Reads.seq(reader)).map{ elems =>
-    //   Async{
-    //     res.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
-    //   }
-    // }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    Json.fromJson[Seq[T]](request.body)(Reads.seq(reader)).map{ elems =>
+      Async{
+        source.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
+      }
+    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
   private def parseQuery[T](request: Request[T]): TypedQueryAuto0[DatomicData] = {
@@ -247,6 +252,41 @@ abstract class DatomiscaAutoSourceController[T]
     }
   }
 
+  private def parseQueryUpdate[T](request: Request[T]): (TypedQueryAuto0[DatomicData], PartialAddEntity) = {
+    val q = request.queryString.get("q") match {
+      case None => throw new RuntimeException("for streamUpdate, query must in query param 'q'")
+
+      case Some(q)   =>
+        q.headOption.map{ text =>
+          DatomicParser.parseQuerySafe(text) match {
+            case Left(failure) => throw new RuntimeException(s"Body in Request isn't TypedQueryAuto0 failure($failure)")
+            case Right(pureQuery) =>
+              if(pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
+                throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept input params")
+
+              if(pureQuery.find.outputs.length > 1)
+                throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept more than 1 output param")
+
+              TypedQueryAuto0[DatomicData](pureQuery)
+          }
+        }.get
+    }
+
+    val upd = request.body match {
+      case AnyContentAsJson(json) => 
+        Json.fromJson[PartialAddEntity](json)(updateReader)
+            .recoverTotal{ e => 
+              throw new RuntimeException(
+                "couldn't parse update descriptor as Json from request body error:"+e
+              ) 
+            }
+
+      case _ => throw new RuntimeException("update descriptor in Body Request isn't Json")
+    }
+
+    (q, upd)
+  }  
+
   def find: EssentialAction = Action{ request =>
     val query: TypedQueryAuto0[DatomicData] = parseQuery(request)
     val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
@@ -260,39 +300,31 @@ abstract class DatomiscaAutoSourceController[T]
   }
 
   def findStream: EssentialAction = Action { request =>
-    Ok(Json.obj())
-    // val json: JsValue = parseQuery(request)
-    // val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-    // val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+    val query: TypedQueryAuto0[DatomicData] = parseQuery(request)
+    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+    val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    // Json.fromJson[JsObject](json)(queryReader).map{ js =>
-    //   Ok.stream(
-    //     res.findStream(js, skip, pageSize)
-    //        .map( it => Json.toJson(it.toSeq)(Writes.seq(writerWithId)) )
-    //        .andThen(Enumerator.eof)
-    //   )
-    // }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    Ok.stream(
+      source.findStream(query, skip, pageSize)
+            .map{ s => Json.toJson(s.toSeq)(Writes.seq(writerWithId)) }
+            .andThen(Enumerator.eof)
+    )
   }
 
   def batchDelete: EssentialAction = Action{ request =>
-    Ok(Json.obj())
-    // val json: JsValue = parseQuery(request)
-    // Json.fromJson[JsObject](json)(queryReader).map{ js =>
-    //   Async {
-    //     res.batchDelete(js).map{ _ => Ok("deleted") }
-    //   }
-    // }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    val query: TypedQueryAuto0[DatomicData] = parseQuery(request)
+
+    Async {
+      source.batchDelete(query).map{ _ => Ok("deleted") }
+    }
   }
 
   def batchUpdate: EssentialAction = Action{ request =>
-    Ok(Json.obj())
-    // val json: JsValue = parseQuery(request)
-    // Json.fromJson[(JsObject, JsObject)](json)(batchReader).map{
-    //   case (q, upd) => Async {
-    //     println(s"q:$q upd:$upd")
-    //     res.batchUpdate(q, upd).map{ _ => Ok("updated") }
-    //   }
-    // }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    val (q, upd) = parseQueryUpdate(request)
+
+    Async{
+      source.batchUpdate(q, upd).map{ _ => Ok("updated") }
+    }
   }
 
 }

@@ -12,7 +12,7 @@ import play.modules.datomisca.Implicits._
 
 // Ref is a pure technical class used to indicate that it references another entity (also contains the DId temporary or final)
 // DRef is a direct reference to a pure non-typed Ident (an enumerator in datomic)
-case class Person(name: String, age: Long/*, characters: Set[DRef]*/)
+case class Person(name: String, age: Long, characters: Set[DRef])
 
 object Person {
   // Namespaces
@@ -34,7 +34,7 @@ object Person {
 
   // Schema
   val schema = Seq(
-    name, age,
+    name, age, characters,
     violent, weak, clever, dumb, stupid
   )
 
@@ -54,14 +54,14 @@ object Person {
   // Entity Reads/Writes
   implicit val entity2Person: EntityReader[Person] = (
     name      .read[String]   and
-    age       .read[Long]     /*and
-    characters.read[Set[DRef]]*/
+    age       .read[Long]     and
+    characters.read[Set[DRef]]
   )(Person.apply _)
 
   implicit val person2Entity: PartialAddEntityWriter[Person] = (
     name      .write[String]   and
-    age       .write[Long]     /*and
-    characters.write[Set[DRef]]*/
+    age       .write[Long]     and
+    characters.write[Set[DRef]]
   )(DatomicMapping.unlift(Person.unapply))
 }
 

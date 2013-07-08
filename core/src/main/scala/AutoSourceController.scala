@@ -78,9 +78,9 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
           case ("GET",    Id(id))      => withId(id, get)
           case ("GET",    Slash())     => find
 
+          case ("PUT",    Batch())     => batchUpdate
           case ("PUT",    Partial(id)) => withId(id, updatePartial)
           case ("PUT",    Id(id))      => withId(id, update)
-          case ("PUT",    Batch())     => batchUpdate
 
           case ("POST",   Batch())     => batchInsert
           case ("POST",   Find())      => find
@@ -98,10 +98,10 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
     def isDefinedAt(rh: RequestHeader) =
       if (rh.path.startsWith(path)) {
         (rh.method, rh.path.drop(path.length)) match {
-          case ("GET",    Stream()   | Id(_)    | Slash()) => true
-          case ("PUT",    Partial(_) | Id(_)    | Batch()) => true
-          case ("POST",   Batch()    | Slash())            => true
-          case ("DELETE", Batch()    | Id(_))              => true
+          case ("GET",    Stream()   | Id(_)      | Slash()) => true
+          case ("PUT",    Batch()    | Partial(_) | Id(_))   => true
+          case ("POST",   Batch()    | Slash())              => true
+          case ("DELETE", Batch()    | Id(_))                => true
           case _ => false
         }
       } else {
