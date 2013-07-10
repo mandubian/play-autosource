@@ -127,8 +127,13 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
   val defaultViewName: String
 
   val writerWithId = Writes[(T, String)] {
-    case (t, id) =>
-        res.writer.writes(t).as[JsObject] ++ Json.obj(res.ID -> JsString(id))
+    case (t, id) => {
+      val jsObj = res.writer.writes(t).as[JsObject]
+      (jsObj \ res.ID) match {
+        case JsUndefined(_) => jsObj ++ Json.obj(res.ID -> id)
+        case actualId => jsObj
+      }
+    }
   }
 
   def insert: EssentialAction = Action(parse.json) { request =>
@@ -143,7 +148,13 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
     Async{
       res.get(id).map{
         case None    => NotFound(s"ID '${id}' not found")
-        case Some(tid) => Ok(Json.toJson(tid._1)(res.writer).as[JsObject] ++ Json.obj(res.ID -> JsString(id)))
+        case Some(tid) => {
+          val jsObj = Json.toJson(tid._1)(res.writer).as[JsObject]
+          (jsObj \ res.ID) match {
+            case JsUndefined(_) => Ok( jsObj ++ Json.obj(res.ID -> JsString(id)) )
+            case actualId => Ok( jsObj )
+          }
+        }
       }
     }
   }
