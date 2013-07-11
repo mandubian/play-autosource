@@ -90,7 +90,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
         }
         i \ ID match {
           case actualId: JsString => (t, actualId.value)
-          case _ => (t, "null")
+          case _ => (t, "")
         }
       }
     }
@@ -108,7 +108,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
           }
           i \ ID match {
             case actualId: JsString => (t, actualId.value)
-            case _ => (t, "null")
+            case _ => (t, "")
           }
         }.grouped(size).map(_.iterator))
     }
