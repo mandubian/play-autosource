@@ -82,15 +82,35 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     var query = sel._2
     if (limit != 0) query = query.setLimit(limit)
     if (skip != 0) query = query.setSkip(skip)
-    Couchbase.find[T](sel._1)(query)(bucket, reader, ctx).map(l => l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])))
+    Couchbase.find[JsObject](sel._1)(query)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map{ l => 
+      l.map { i => 
+        val t = reader.reads(i) match {
+          case e:JsError => throw new RuntimeException("Document does not match object")
+          case s:JsSuccess[T] => s.get
+        }
+        i \ ID match {
+          case actualId: JsString => (t, actualId.value)
+          case _ => (t, "null")
+        }
+      }
+    }
   }
 
   def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, String)]] = {
     var query = sel._2
     if (skip != 0) query = query.setSkip(skip)
-    val futureEnumerator = Couchbase.find[T](sel._1)(query)(bucket, reader, ctx).map { l =>
+    val futureEnumerator = Couchbase.find[JsObject](sel._1)(query)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
-      Enumerator.enumerate(l.map(i => (i, (Json.toJson(i)(writer) \ ID).as[String])).grouped(size).map(_.iterator))
+      Enumerator.enumerate(l.map { i => 
+          val t = reader.reads(i) match {
+            case e:JsError => throw new RuntimeException("Document does not match object")
+            case s:JsSuccess[T] => s.get
+          }
+          i \ ID match {
+            case actualId: JsString => (t, actualId.value)
+            case _ => (t, "null")
+          }
+        }.grouped(size).map(_.iterator))
     }
     Enumerator.flatten(futureEnumerator)
   }
