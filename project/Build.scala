@@ -21,7 +21,7 @@ object ApplicationBuild extends Build {
     settings = BuildSettings ++ Seq(
       publish      := {}
     )
-  ) aggregate(core, reactivemongo, datomisca)
+  ) aggregate(core, reactivemongo, datomisca, couchbase)
 
   lazy val core = Project(
     id = "core", 
@@ -59,6 +59,21 @@ object ApplicationBuild extends Build {
       libraryDependencies ++= Seq(
         "play.modules.datomisca" %% "play-datomisca" % "0.2",
         "com.datomic" % "datomic-free" % "0.8.4007" exclude("org.slf4j", "slf4j-nop")
+      )
+    )
+  ) dependsOn(core)
+
+  lazy val couchbase = Project(
+    id = "couchbase",
+    base = file("couchbase"),
+    settings = BuildSettings ++ Seq(
+      resolvers ++= Seq(
+        "Ancelin Repository" at "https://raw.github.com/mathieuancelin/play2-couchbase/master/repository/snapshots",
+        "Spy Repository" at "http://files.couchbase.com/maven2"
+      ),
+      libraryDependencies ++= Seq(
+        "org.ancelin.play2.couchbase" %% "play2-couchbase" % "0.1-SNAPSHOT",
+        "play"              %% "play"              % "2.1.1"        % "provided"
       )
     )
   ) dependsOn(core)
