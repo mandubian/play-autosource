@@ -4,7 +4,7 @@
 
 ->      /persons                    controllers.Application0
 
-GET     /                           controllers.Application0.index
+#GET     /                           controllers.Application0.index
 
 #GET     /login/:name                controllers.Application3.login(name: String)
 #GET     /logout                     controllers.Application3.logout
