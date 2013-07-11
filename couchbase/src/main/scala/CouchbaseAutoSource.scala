@@ -45,9 +45,10 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
         val newJson = json ++ Json.obj(ID -> JsString(id))
         Couchbase.set(id, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
       }
-      case actualId => {
-        Couchbase.set(actualId.as[String], json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
+      case actualId: JsString => {
+        Couchbase.set(actualId.value, json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => actualId.value)(ctx)
       }
+      case _ => throw new RuntimeException(s"Field with $ID already exists and not of type JsString")
     }
   }
 
@@ -68,7 +69,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
       opt.map { t =>
         val json = Json.toJson(t._1)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        Couchbase.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        Couchbase.replace((json \ ID).as[JsString].value, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }.getOrElse(throw new RuntimeException(s"Cannot find ID $id"))
     }
   }
@@ -97,7 +98,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
   def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
     Couchbase.find[JsObject](sel._1)(sel._2)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
       list.map { t =>
-        delete((t \ ID).as[String])(ctx)
+        delete((t \ ID).as[JsString].value)(ctx)
       }
     }
   }
@@ -107,7 +108,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
       list.map { t =>
         val json = Json.toJson(t)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        Couchbase.replace((json \ ID).as[String], newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        Couchbase.replace((json \ ID).as[JsString].value, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }
     }
   }
