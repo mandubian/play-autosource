@@ -89,7 +89,7 @@ object Persons extends ReactiveMongoAutoSourceController[JsObject] {
 ### 50' : Add AutoSource routes at beginning `conf/routes`
 
 ```scala
-->      /person                     controllers.Person
+->      /person                     controllers.Persons
 ```
 
 ### 60' : Create `conf/play.plugins` to initialize ReactiveMongo Plugin
