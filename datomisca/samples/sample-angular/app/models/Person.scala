@@ -45,9 +45,9 @@ object Person {
   // queryReader
   implicit val partialUpdate: Reads[PartialAddEntity] = (
     ((__ \ 'name).read(readAttr[String](Person.name)) orElse Reads.pure(PartialAddEntity(Map.empty))) and
-    ((__ \ 'age) .read(readAttr[Long](Person.age)) orElse Reads.pure(PartialAddEntity(Map.empty)))  /*and
+    ((__ \ 'age) .read(readAttr[Long](Person.age)) orElse Reads.pure(PartialAddEntity(Map.empty)))  and
     // need to specify type because a ref/many can be a list of dref or entities so need to tell it explicitly
-    (__ \ 'characters).read( readAttr[Set[DRef]](Person.characters) )*/
+    (__ \ 'characters).read( readAttr[Set[DRef]](Person.characters) )
     reduce
   )
 

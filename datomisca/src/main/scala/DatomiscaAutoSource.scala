@@ -18,6 +18,8 @@ package play.autosource.datomisca
 import scala.concurrent._
 
 import datomisca._
+import datomisca.gen._
+import datomisca.macros._
 import Datomic._
 import DatomicMapping._
 
@@ -73,7 +75,7 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
   }
 
   def updatePartial(id: Long, upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Unit] = {
-    Datomic.transact(AddEntity(DId(id), upd)).map{ _ => () }
+    Datomic.transact(new AddEntity(DId(id), upd.props)).map{ _ => () }
   }
 
   val BATCH_SIZE = 100
@@ -101,7 +103,7 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
       }
       if(skip!=0) res = res.drop(skip)
       if(limit!=0) res = res.take(limit)
-      res
+      res.toSeq
     }
   }
 
@@ -119,14 +121,14 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
   def batchDelete(sel: TypedQueryAuto0[DatomicData])(implicit ctx: ExecutionContext): Future[Unit] = {
     val txData = Datomic.q(sel, database).map{
       case DLong(id) => Entity.retract(id)
-    }
+    }.toSeq
     Datomic.transact(txData).map( _ => ())
   }
 
   def batchUpdate(sel: TypedQueryAuto0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Unit] = {
     val txData = Datomic.q(sel, database).map{
       case DLong(id) => Entity.add(DId(id), upd)
-    }
+    }.toSeq
     Datomic.transact(txData).map( _ => ())
   }
 

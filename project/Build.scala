@@ -7,6 +7,7 @@ object ApplicationBuild extends Build {
   val BuildSettings = Defaults.defaultSettings ++ Seq(
     scalaVersion := "2.10.1",
     organization := "play-autosource",
+    version := "0.11-SNAPSHOT",
     resolvers ++= mandubianRepo
   ) ++ Publish.settings
 
@@ -57,8 +58,8 @@ object ApplicationBuild extends Build {
         "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases"
       ),
       libraryDependencies ++= Seq(
-        "play.modules.datomisca" %% "play-datomisca" % "0.2",
-        "com.datomic" % "datomic-free" % "0.8.4007" exclude("org.slf4j", "slf4j-nop")
+        "play.modules.datomisca" %% "play-datomisca" % "0.5.1",
+        "com.datomic" % "datomic-free" % "0.8.4007" % "provided" exclude("org.slf4j", "slf4j-nop") 
       )
     )
   ) dependsOn(core)

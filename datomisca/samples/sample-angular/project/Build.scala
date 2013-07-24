@@ -25,7 +25,8 @@ object ApplicationBuild extends Build {
   val main = play.Project(appName, appVersion, appDependencies).settings(
     resolvers ++= mandubianRepo ++ datomicRepo,
     libraryDependencies ++= Seq(
-      "play-autosource"   %% "datomisca"           % "0.1-SNAPSHOT",
+      "play-autosource"   %% "datomisca"           % "0.11-SNAPSHOT",
+      "com.datomic"        % "datomic-free"        % "0.8.4020.26",
       "org.specs2"        %% "specs2"              % "1.13"        % "test",
       "junit"              % "junit"               % "4.8"         % "test"
     )
