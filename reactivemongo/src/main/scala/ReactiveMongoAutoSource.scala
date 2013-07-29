@@ -125,7 +125,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
   extends AutoSourceRouterContoller[BSONObjectID]
   with MongoController {
 
-  val coll: JSONCollection
+  def coll: JSONCollection
 
   lazy val res = new ReactiveMongoAutoSource[T](coll)
 
