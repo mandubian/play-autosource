@@ -22,7 +22,7 @@ object ApplicationBuild extends Build {
     settings = BuildSettings ++ Seq(
       publish      := {}
     )
-  ) aggregate(core, reactivemongo, datomisca, couchbase)
+  ) aggregate(core, reactivemongo, datomisca, couchbase, slick)
 
   lazy val core = Project(
     id = "core", 
@@ -75,6 +75,22 @@ object ApplicationBuild extends Build {
       libraryDependencies ++= Seq(
         "org.ancelin.play2.couchbase" %% "play2-couchbase" % "0.1-SNAPSHOT",
         "play"              %% "play"              % "2.1.1"        % "provided"
+      )
+    )
+  ) dependsOn(core)
+
+
+
+  lazy val slick = Project(
+    id = "slick",
+    base = file("slick"),
+    settings = BuildSettings ++ Seq(
+      resolvers ++= Seq(
+        "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
+      ),
+      libraryDependencies ++= Seq(
+        "com.typesafe.slick" %% "slick"                  % "1.0.1"                    ,
+        "com.typesafe.play"  %% "play-slick"             % "0.4.0"
       )
     )
   ) dependsOn(core)
