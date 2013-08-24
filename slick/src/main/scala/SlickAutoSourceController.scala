@@ -19,11 +19,11 @@ package play.autosource.slick
 import play.api.mvc._
 import play.api.Logger
 
-import play.autosource.core.AutoSourceController
+import play.autosource.core.{AutoSourceRouterContoller, AutoSourceController}
 import slick.dao.{Entity,GenericDao}
-import play.api.libs.json.{OFormat, JsValue}
+import play.api.libs.json.{Json, OFormat, JsValue}
 
- abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceController[Long] {
+ abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceRouterContoller[Long] {
 
   val dao: GenericDao[E]
   val mapper : Mapper[E]
@@ -85,7 +85,10 @@ import play.api.libs.json.{OFormat, JsValue}
 
   def updatePartial(id: Long): EssentialAction = ???
 
-  def find: EssentialAction = ???
+  def find: EssentialAction = Action {
+    val entities = dao.list()
+    Ok(mapper.toJson(entities))
+  }
 
   def findStream: EssentialAction = ???
 
@@ -100,7 +103,8 @@ import play.api.libs.json.{OFormat, JsValue}
  }
 
 trait Mapper[E <: Entity[E]] {
-  val format : OFormat[E]
+  implicit val format : OFormat[E]
+  def toJson(seq: Seq[E]) : JsValue = Json.toJson(seq)
   def toJson(entity: E) : JsValue = format.writes(entity)
   def fromJson(jsValue: JsValue) = format.reads(jsValue).get
 }
