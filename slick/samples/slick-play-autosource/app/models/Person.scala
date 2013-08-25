@@ -5,7 +5,7 @@ import play.api.libs.json.Json
 
 case class Person(firstName: String,
                   lastName: String,
-                  id: Option[Long]) extends Entity[Person] {
+                  id: Option[Long] = None) extends Entity[Person] {
 
   def withId(id: Long): Person = copy(id = Some(id))
 
