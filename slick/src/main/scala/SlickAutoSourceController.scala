@@ -26,7 +26,7 @@ import play.api.libs.json.{Json, OFormat, JsValue}
  abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceRouterContoller[Long] {
 
   val dao: GenericDao[E]
-  val mapper : Mapper[E]
+  implicit val format : OFormat[E]
 
   def insert : EssentialAction = Action {
     request =>
@@ -38,7 +38,7 @@ import play.api.libs.json.{Json, OFormat, JsValue}
 
   private def createEntityFromJson(jsValue: JsValue) = {
     Logger.debug("Payload: " + jsValue)
-    val entity: E = mapper.fromJson(jsValue)
+    val entity: E = format.reads(jsValue).get
 
     val persistedEntity: E = {
       Logger.debug("Creating entity in tx: " + entity)
@@ -46,7 +46,7 @@ import play.api.libs.json.{Json, OFormat, JsValue}
     }
 
     Logger.debug("Persisted entity: " + persistedEntity)
-    Created(mapper.toJson(persistedEntity))
+    Created(format.writes(persistedEntity))
   }
 
 
@@ -55,7 +55,7 @@ import play.api.libs.json.{Json, OFormat, JsValue}
      val persistedEntityOpt = dao.findOptionById(id)
 
      persistedEntityOpt match {
-       case Some(entity) => Ok(mapper.toJson(entity))
+       case Some(entity) => Ok(format.writes(entity))
        case None => entityNotFound(id)
      }
    }
@@ -73,7 +73,7 @@ import play.api.libs.json.{Json, OFormat, JsValue}
     request.body.asJson match {
       case Some(json) => {
         try {
-          dao.update(mapper.fromJson(json))
+          dao.update(format.reads(json).get)
           Ok(json)
         } catch {
           case e:Exception => BadRequest(e.getMessage)
@@ -87,7 +87,7 @@ import play.api.libs.json.{Json, OFormat, JsValue}
 
   def find: EssentialAction = Action {
     val entities = dao.list()
-    Ok(mapper.toJson(entities))
+    Ok(Json.toJson(entities))
   }
 
   def findStream: EssentialAction = ???
@@ -102,9 +102,3 @@ import play.api.libs.json.{Json, OFormat, JsValue}
 
  }
 
-trait Mapper[E <: Entity[E]] {
-  implicit val format : OFormat[E]
-  def toJson(seq: Seq[E]) : JsValue = Json.toJson(seq)
-  def toJson(entity: E) : JsValue = format.writes(entity)
-  def fromJson(jsValue: JsValue) = format.reads(jsValue).get
-}
