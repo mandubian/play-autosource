@@ -335,7 +335,7 @@ We are going to use _Angular resources_ for it even if it's not really the best 
 
 _(thanks to Paul Dijou for reviewing this code because I repeat I don't know angularJS at all and I wrote this in 20mn without trying to understand anything :D)_
 
-```scala
+```javascript
 var app =
   // injects ngResource
   angular.module("app", ["ngResource"])
