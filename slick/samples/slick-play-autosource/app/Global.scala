@@ -4,10 +4,12 @@ import play.api.GlobalSettings
 
 import play.api.Application
 
+import models.Components.instance._
+
 object Global extends GlobalSettings {
 
   override def onStart(app: Application) {
-    Person("John", "Doe").save()
-    Person("João", "da Silva").save()
+    Persons.add(Person("John", "Doe"))
+    Persons.add(Person("João", "da Silva"))
   }
 }

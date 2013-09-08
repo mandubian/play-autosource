@@ -19,13 +19,14 @@ package play.autosource.slick
 import play.api.mvc._
 import play.api.Logger
 
-import play.autosource.core.{AutoSourceRouterContoller, AutoSourceController}
-import slick.dao.{Entity,GenericDao}
+import play.autosource.core.AutoSourceRouterContoller
+import slick.dao.{SlickDao, Entity}
 import play.api.libs.json.{Json, OFormat, JsValue}
 
- abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceRouterContoller[Long] {
 
-  val dao: GenericDao[E]
+abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceRouterContoller[Long] {
+
+  val dao: SlickDao[E]
   implicit val format : OFormat[E]
 
   def insert : EssentialAction = Action {

@@ -1,6 +1,6 @@
 package models
 
-import slick.dao.{SlickDaoProfile, GenericDao, Entity}
+import slick.dao.{SlickDaoProfile, Entity}
 import play.api.libs.json.Json
 
 case class Person(firstName: String,
@@ -12,24 +12,19 @@ case class Person(firstName: String,
 }
 
 
-object Person extends GenericDao[Person] with SlickDaoProfile {
+trait PersonComponent  { this: SlickDaoProfile =>
 
-  val table = models.Components.instance.Persons
+  import profile.simple._
 
-  implicit val personFormat = Json.format[Person]
+  object Persons extends BaseTable[Person]("persons") {
 
-  trait PersonComponent {
+    def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
 
-    object Persons extends BaseTable[Person]("persons") {
+    def firstName = column[String]("first_name")
 
-      def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
+    def lastName = column[String]("last_name")
 
-      def firstName = column[String]("first_name")
-
-      def lastName = column[String]("last_name")
-
-      def * = firstName ~ lastName ~ id.? <>(Person.apply _, Person.unapply _)
-    }
+    def * = firstName ~ lastName ~ id.? <>(Person.apply _, Person.unapply _)
   }
 }
 
