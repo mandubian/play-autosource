@@ -21,42 +21,35 @@ import play.api.Logger
 
 import play.autosource.core.AutoSourceRouterContoller
 import slick.dao.{SlickDao, Entity}
-import play.api.libs.json.{Json, OFormat, JsValue}
+import play.api.libs.json._
+import scala.Some
 
 
-abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceRouterContoller[Long] {
+abstract class SlickAutoSourceController[E <: Entity[E]:Format] extends AutoSourceRouterContoller[Long] {
 
   val dao: SlickDao[E]
-  implicit val format : OFormat[E]
 
-  def insert : EssentialAction = Action {
-    request =>
-      request.body.asJson match {
-        case Some(json) => createEntityFromJson(json)
-        case None => BadRequest("Empty body! Can't create entity.")
-      }
+  val reader: Reads[E] = implicitly[Reads[E]]
+  val writer: Writes[E] = implicitly[Writes[E]]
+  val idWriter = Writes[Long] { id =>
+      Json.obj("id" -> id)
   }
 
-  private def createEntityFromJson(jsValue: JsValue) = {
-    Logger.debug("Payload: " + jsValue)
-    val entity: E = format.reads(jsValue).get
-
-    val persistedEntity: E = {
-      Logger.debug("Creating entity in tx: " + entity)
-      dao.add(entity)
-    }
-
-    Logger.debug("Persisted entity: " + persistedEntity)
-    Created(format.writes(persistedEntity))
+  def insert : EssentialAction = Action(parse.json) { request =>
+    Json.fromJson[E](request.body)(reader).map { entity =>
+      val persistedEntity: E = {
+        Logger.debug("Creating entity in tx: " + entity)
+        dao.add(entity)
+      }
+      Created(writer.writes(persistedEntity))
+    }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
   }
 
 
    def get(id: Long): EssentialAction = Action { request =>
-
      val persistedEntityOpt = dao.findOptionById(id)
-
      persistedEntityOpt match {
-       case Some(entity) => Ok(format.writes(entity))
+       case Some(entity) => Ok(writer.writes(entity))
        case None => entityNotFound(id)
      }
    }
@@ -65,35 +58,42 @@ abstract class SlickAutoSourceController[E <: Entity[E]] extends AutoSourceRoute
    def delete(id: Long): EssentialAction = Action {
      dao.deleteById(id) match {
        case false => entityNotFound(id)
-       case true  => Ok("Delete for id: " + id)
+       case true  => Ok(Json.toJson(id)(idWriter))
      }
    }
 
 
-  def update(id: Long): EssentialAction = Action { request =>
-    request.body.asJson match {
-      case Some(json) => {
-        try {
-          dao.update(format.reads(json).get)
-          Ok(json)
-        } catch {
-          case e:Exception => BadRequest(e.getMessage)
-        }
-      }
-      case None => BadRequest("Empty body! Can't update entity.")
-    }
+  def update(id: Long): EssentialAction = Action(parse.json) { request =>
+    Json.fromJson[E](request.body)(reader).map { t =>
+      dao.update(t)
+      Ok(Json.toJson(id)(idWriter))
+    }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def updatePartial(id: Long): EssentialAction = ???
+  def updatePartial(id: Long): EssentialAction = update(id)
 
-  def find: EssentialAction = Action {
-    val entities = dao.list()
+  def find: EssentialAction = Action { request =>
+    val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+    val entities = dao.pagesList(skip, limit)
     Ok(Json.toJson(entities))
   }
 
-  def findStream: EssentialAction = ???
+  def findStream: EssentialAction = Action  { request =>
+    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+    val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+    val entities = dao.pagesList(skip, pageSize)
+    Ok(Json.toJson(entities))
+  }
 
-  def batchInsert: EssentialAction = ???
+  def batchInsert: EssentialAction = Action(parse.json) { request =>
+    Json.fromJson[Seq[E]](request.body)(Reads.seq(reader)).map{ elems =>
+      elems.foreach { entity =>
+        dao.add(entity)
+      }
+      Ok(Json.obj("nb" -> elems.size))
+    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  }
 
   def batchDelete: EssentialAction = ???
 

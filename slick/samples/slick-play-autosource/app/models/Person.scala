@@ -10,7 +10,9 @@ case class Person(firstName: String,
   def withId(id: Long): Person = copy(id = Some(id))
 
 }
-
+object Person  {
+  implicit val formatPerson = Json.format[Person]
+}
 
 trait PersonComponent  { this: SlickDaoProfile =>
 

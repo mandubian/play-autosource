@@ -8,7 +8,6 @@ import models.Components.instance.Persons
 object Application extends SlickAutoSourceController[Person] {
 
   val dao = Persons
-  val format = Json.format[Person]
-
+  
 }
 
