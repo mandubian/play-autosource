@@ -18,7 +18,7 @@ trait PersonComponent  { this: SlickDaoProfile =>
 
   import profile.simple._
 
-  object Persons extends BaseTable[Person]("persons") {
+  implicit object Persons extends BaseTable[Person]("persons") {
 
     def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
 

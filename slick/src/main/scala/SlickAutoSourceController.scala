@@ -25,9 +25,9 @@ import play.api.libs.json._
 import scala.Some
 
 
-abstract class SlickAutoSourceController[E <: Entity[E]:Format] extends AutoSourceRouterContoller[Long] {
+abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends AutoSourceRouterContoller[Long] {
 
-  val dao: SlickDao[E]
+  val dao: SlickDao[E] = implicitly[SlickDao[E]]
 
   val reader: Reads[E] = implicitly[Reads[E]]
   val writer: Writes[E] = implicitly[Writes[E]]
