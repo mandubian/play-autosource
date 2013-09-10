@@ -531,7 +531,7 @@ There are also lots of features to improve/add because it's still a very draft m
 
 If you like it and have ideas, don't hesitate to discuss, to contribute, to improve etc...
 
-`curl -X POST -d "{ "coding" : "Have fun"} http://localhost:9000/developer`
+`curl -X POST -d '{ "coding" : "Have fun"}' http://localhost:9000/developer`
 
 <br/>
 <br/>
