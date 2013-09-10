@@ -31,9 +31,9 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
   val reader: Reads[E] = implicitly[Reads[E]]
   val writer: Writes[E] = implicitly[Writes[E]]
-  val idWriter = Writes[Long] { id =>
-      Json.obj("id" -> id)
-  }
+
+  val idWriter = Writes[Long] { id => Json.obj("id" -> id) }
+  val idReader: Reads[Long] = (__ \ "id").read[Long]
 
   def insert : EssentialAction = Action(parse.json) { request =>
     Json.fromJson[E](request.body)(reader).map { entity =>
@@ -95,9 +95,22 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
   }
 
-  def batchDelete: EssentialAction = ???
+  def batchDelete: EssentialAction = Action(parse.json) { request =>
+    Json.fromJson[Seq[Long]](request.body)(Reads.seq(idReader)).map { ids =>
+      ids.foreach(id => dao.deleteById(id))
+      Ok(Json.obj("nb" -> ids.size))
+    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  }
 
-  def batchUpdate: EssentialAction = ???
+  def batchUpdate: EssentialAction = Action(parse.json) { request =>
+    Json.fromJson[Seq[E]](request.body)(Reads.seq(reader)).map{ elems =>
+      elems.foreach { entity =>
+        dao.update(entity)
+      }
+      Ok(Json.obj("nb" -> elems.size))
+    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  }
+
 
   private def entityNotFound(id: Long) = NotFound("No entity found for id:" + id)
 
