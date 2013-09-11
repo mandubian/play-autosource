@@ -20,48 +20,45 @@ import play.autosource.core.{AutoSourceRouterContoller, AutoSource}
 import scala.concurrent.{Future, ExecutionContext}
 import play.api.libs.iteratee.{Iteratee, Enumerator}
 
-import org.ancelin.play2.couchbase.{CouchbaseRWImplicits, Couchbase, CouchbaseBucket}
-import java.util.UUID
-import com.couchbase.client.protocol.views.{Query, View}
-import play.api.mvc._
+import org.ancelin.play2.couchbase.{CouchbaseRWImplicits, CouchbaseBucket}
 import org.ancelin.play2.couchbase.crud.QueryObject
+import com.couchbase.client.protocol.views.{Query, View}
+
+import java.util.UUID
+import play.api.mvc._
 import play.api.libs.json.JsUndefined
 import play.api.libs.json.JsObject
 
-class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[T, String, (View, Query), JsObject] {
-
-  import org.ancelin.play2.couchbase.CouchbaseImplicitConversion.Couchbase2ClientWrapper
-  import org.ancelin.play2.couchbase.CouchbaseRWImplicits._
+class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_id") extends AutoSource[T, String, (View, Query), JsObject] {
 
   val reader: Reads[T] = implicitly[Reads[T]]
   val writer: Writes[T] = implicitly[Writes[T]]
-  val ID = "_id"
 
   def insert(t: T)(implicit ctx: ExecutionContext): Future[String] = {
     val id: String = UUID.randomUUID().toString
     val json = writer.writes(t).as[JsObject]
-    json \ ID match {
+    json \ idKey match {
       case JsUndefined(_) => {
-        val newJson = json ++ Json.obj(ID -> JsString(id))
-        Couchbase.set(id, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
+        val newJson = json ++ Json.obj(idKey -> JsString(id))
+        bucket.set(id, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
       }
       case actualId: JsString => {
-        Couchbase.set(actualId.value, json)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => actualId.value)(ctx)
+        bucket.set(actualId.value, json)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => actualId.value)(ctx)
       }
-      case _ => throw new RuntimeException(s"Field with $ID already exists and not of type JsString")
+      case _ => throw new RuntimeException(s"Field with $idKey already exists and not of type JsString")
     }
   }
 
   def get(id: String)(implicit ctx: ExecutionContext): Future[Option[(T, String)]] = {
-    Couchbase.get[T]( id )(bucket ,reader, ctx).map( _.map( v => ( v, id ) ) )(ctx)
+    bucket.get[T]( id )(reader, ctx).map( _.map( v => ( v, id ) ) )(ctx)
   }
 
   def delete(id: String)(implicit ctx: ExecutionContext): Future[Unit] = {
-    Couchbase.delete(id)(bucket, ctx).map(_ => ())
+    bucket.delete(id)(ctx).map(_ => ())
   }
 
   def update(id: String, t: T)(implicit ctx: ExecutionContext): Future[Unit] = {
-    Couchbase.replace(id, t)(bucket, writer, ctx).map(_ => ())
+    bucket.replace(id, t)(writer, ctx).map(_ => ())
   }
 
   def updatePartial(id: String, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
@@ -69,7 +66,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
       opt.map { t =>
         val json = Json.toJson(t._1)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        Couchbase.replace((json \ ID).as[JsString].value, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        bucket.replace((json \ idKey).as[JsString].value, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }.getOrElse(throw new RuntimeException(s"Cannot find ID $id"))
     }
   }
@@ -82,15 +79,15 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
     var query = sel._2
     if (limit != 0) query = query.setLimit(limit)
     if (skip != 0) query = query.setSkip(skip)
-    Couchbase.find[JsObject](sel._1)(query)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map{ l => 
+    bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map{ l =>
       l.map { i => 
-        val t = reader.reads(i) match {
+        val t = reader.reads(i._1) match {
           case e:JsError => throw new RuntimeException("Document does not match object")
           case s:JsSuccess[T] => s.get
         }
-        i \ ID match {
+        i._1 \ idKey match {
           case actualId: JsString => (t, actualId.value)
-          case _ => (t, "")
+          case _ => (t, i._2)
         }
       }
     }
@@ -99,16 +96,16 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
   def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, String)]] = {
     var query = sel._2
     if (skip != 0) query = query.setSkip(skip)
-    val futureEnumerator = Couchbase.find[JsObject](sel._1)(query)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { l =>
+    val futureEnumerator = bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
       Enumerator.enumerate(l.map { i => 
-          val t = reader.reads(i) match {
+          val t = reader.reads(i._1) match {
             case e:JsError => throw new RuntimeException("Document does not match object")
             case s:JsSuccess[T] => s.get
           }
-          i \ ID match {
+          i._1 \ idKey match {
             case actualId: JsString => (t, actualId.value)
-            case _ => (t, "")
+            case _ => (t, i._2)
           }
         }.grouped(size).map(_.iterator))
     }
@@ -116,42 +113,42 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket) extends AutoSource[
   }
 
   def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
-    Couchbase.find[JsObject](sel._1)(sel._2)(bucket, CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
+    bucket.search[JsObject](sel._1)(sel._2)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).map { list =>
       list.map { t =>
-        delete((t \ ID).as[JsString].value)(ctx)
+        delete(t._2)(ctx)
       }
     }
   }
 
   def batchUpdate(sel: (View, Query), upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
-    Couchbase.find[T](sel._1)(sel._2)(bucket, reader, ctx).map { list =>
+    bucket.search[T](sel._1)(sel._2)(reader, ctx).map { list =>
       list.map { t =>
-        val json = Json.toJson(t)(writer).as[JsObject]
+        val json = Json.toJson(t._1)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        Couchbase.replace((json \ ID).as[JsString].value, newJson)(bucket, CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        bucket.replace(t._2, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }
     }
   }
 
   def view(docName: String, viewName: String)(implicit ctx: ExecutionContext): Future[View] = {
-    Couchbase.view(docName, viewName)(bucket, ctx)
+    bucket.view(docName, viewName)(ctx)
   }
 }
 
 abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionContext) extends AutoSourceRouterContoller[String] {
 
-  import org.ancelin.play2.couchbase.CouchbaseImplicitConversion.Couchbase2ClientWrapper
+  def bucket: CouchbaseBucket
+  def defaultDesignDocname: String
+  def defaultViewName: String
+  def idKey: String = "_id"
 
-  val bucket: CouchbaseBucket
-  lazy val res = new CouchbaseAutoSource[T](bucket)
-  val defaultDesignDocname: String
-  val defaultViewName: String
+  lazy val res = new CouchbaseAutoSource[T](bucket, idKey)
 
   val writerWithId = Writes[(T, String)] {
     case (t, id) => {
       val jsObj = res.writer.writes(t).as[JsObject]
-      (jsObj \ res.ID) match {
-        case JsUndefined(_) => jsObj ++ Json.obj(res.ID -> id)
+      (jsObj \ idKey) match {
+        case JsUndefined(_) => jsObj ++ Json.obj(idKey -> id)
         case actualId => jsObj
       }
     }
@@ -171,8 +168,8 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
         case None    => NotFound(s"ID '${id}' not found")
         case Some(tid) => {
           val jsObj = Json.toJson(tid._1)(res.writer).as[JsObject]
-          (jsObj \ res.ID) match {
-            case JsUndefined(_) => Ok( jsObj ++ Json.obj(res.ID -> JsString(id)) )
+          (jsObj \ idKey) match {
+            case JsUndefined(_) => Ok( jsObj ++ Json.obj(idKey -> JsString(id)) )
             case actualId => Ok( jsObj )
           }
         }
