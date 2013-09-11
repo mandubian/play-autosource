@@ -23,7 +23,8 @@ import play.autosource.core.AutoSourceRouterContoller
 import slick.dao.{SlickDao, Entity}
 import play.api.libs.json._
 import scala.Some
-
+import play.api.db.slick.{DBAction, RequestWithDbSession}
+import play.api.Play.current
 
 abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends AutoSourceRouterContoller[Long] {
 
@@ -35,18 +36,20 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
   val idWriter = Writes[Long] { id => Json.obj("id" -> id) }
   val idReader: Reads[Long] = (__ \ "id").read[Long]
 
-  def insert : EssentialAction = Action(parse.json) { request =>
-    Json.fromJson[E](request.body)(reader).map { entity =>
-      val persistedEntity: E = {
-        Logger.debug("Creating entity in tx: " + entity)
-        dao.add(entity)
-      }
-      Created(writer.writes(persistedEntity))
-    }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
+  def insert : EssentialAction = DBAction { request =>
+    parseRequestWithSession(request) { jsValue =>
+      Json.fromJson[E](jsValue)(reader).map { entity =>
+        val persistedEntity: E = {
+          Logger.debug("Creating entity in tx: " + entity)
+          dao.add(entity)
+        }
+        Created(writer.writes(persistedEntity))
+      }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
+    }
   }
 
 
-   def get(id: Long): EssentialAction = Action { request =>
+   def get(id: Long): EssentialAction = DBAction { request =>
      val persistedEntityOpt = dao.findOptionById(id)
      persistedEntityOpt match {
        case Some(entity) => Ok(writer.writes(entity))
@@ -55,7 +58,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
    }
 
 
-   def delete(id: Long): EssentialAction = Action {
+   def delete(id: Long): EssentialAction = DBAction {
      dao.deleteById(id) match {
        case false => entityNotFound(id)
        case true  => Ok(Json.toJson(id)(idWriter))
@@ -63,56 +66,81 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
    }
 
 
-  def update(id: Long): EssentialAction = Action(parse.json) { request =>
-    Json.fromJson[E](request.body)(reader).map { t =>
-      dao.update(t)
-      Ok(Json.toJson(id)(idWriter))
-    }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
+  def update(id: Long): EssentialAction = DBAction { request =>
+    parseRequestWithSession(request) { jsValue =>
+      Json.fromJson[E](jsValue)(reader).map { t =>
+        dao.update(t)
+        Ok(Json.toJson(id)(idWriter))
+      }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
+    }
   }
+
 
   def updatePartial(id: Long): EssentialAction = update(id)
 
-  def find: EssentialAction = Action { request =>
+  def find: EssentialAction = DBAction { requestWithSession =>
+    val request = requestWithSession.request
+
     val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+
     val entities = dao.pagesList(skip, limit)
     Ok(Json.toJson(entities))
   }
 
-  def findStream: EssentialAction = Action  { request =>
+  def findStream: EssentialAction = DBAction { requestWithSession =>
+    val request = requestWithSession.request
+
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+
     val entities = dao.pagesList(skip, pageSize)
     Ok(Json.toJson(entities))
   }
 
-  def batchInsert: EssentialAction = Action(parse.json) { request =>
-    Json.fromJson[Seq[E]](request.body)(Reads.seq(reader)).map{ elems =>
-      elems.foreach { entity =>
-        dao.add(entity)
-      }
-      Ok(Json.obj("nb" -> elems.size))
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  def batchInsert: EssentialAction = DBAction { request =>
+
+    parseRequestWithSession(request) { jsValue =>
+      Json.fromJson[Seq[E]](jsValue)(Reads.seq(reader)).map{ elems =>
+        elems.foreach { entity =>
+          dao.add(entity)
+        }
+        Ok(Json.obj("nb" -> elems.size))
+      }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    }
   }
 
-  def batchDelete: EssentialAction = Action(parse.json) { request =>
-    Json.fromJson[Seq[Long]](request.body)(Reads.seq(idReader)).map { ids =>
-      ids.foreach(id => dao.deleteById(id))
-      Ok(Json.obj("nb" -> ids.size))
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  def batchDelete: EssentialAction = DBAction { request =>
+
+    parseRequestWithSession(request) { jsValue =>
+      Json.fromJson[Seq[Long]](jsValue)(Reads.seq(idReader)).map { ids =>
+        ids.foreach(id => dao.deleteById(id))
+        Ok(Json.obj("nb" -> ids.size))
+      }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    }
   }
 
-  def batchUpdate: EssentialAction = Action(parse.json) { request =>
-    Json.fromJson[Seq[E]](request.body)(Reads.seq(reader)).map{ elems =>
-      elems.foreach { entity =>
-        dao.update(entity)
-      }
-      Ok(Json.obj("nb" -> elems.size))
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  def batchUpdate: EssentialAction = DBAction { request =>
+
+    parseRequestWithSession(request) { jsValue =>
+      Json.fromJson[Seq[E]](jsValue)(Reads.seq(reader)).map{ elems =>
+        elems.foreach { entity =>
+          dao.update(entity)
+        }
+        Ok(Json.obj("nb" -> elems.size))
+      }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    }
   }
 
 
   private def entityNotFound(id: Long) = NotFound("No entity found for id:" + id)
 
- }
+  private def parseRequestWithSession(requestWithDbSession: RequestWithDbSession)(block:(JsValue) => Result) : Result = {
+    requestWithDbSession.request.body.asJson.map {
+      block
+    }.getOrElse {
+      BadRequest("Illegal json format")
+    }
+  }
 
+ }
