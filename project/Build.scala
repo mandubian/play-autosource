@@ -89,7 +89,6 @@ object ApplicationBuild extends Build {
         "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
       ),
       libraryDependencies ++= Seq(
-        "com.typesafe.slick" %% "slick"                  % "1.0.1"                    ,
         "com.typesafe.play"  %% "play-slick"             % "0.4.0"
       )
     )
