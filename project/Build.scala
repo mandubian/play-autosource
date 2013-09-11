@@ -2,19 +2,31 @@ import sbt._
 import Keys._
 
 object ApplicationBuild extends Build {
-  val buildName         = "play-autosource"
+  val buildName    = "play-autosource"
 
-  val BuildSettings = Defaults.defaultSettings ++ Seq(
-    scalaVersion := "2.10.1",
-    organization := "play-autosource",
-    version := "0.11-SNAPSHOT",
-    resolvers ++= mandubianRepo
-  ) ++ Publish.settings
+  // coreVersion is the version of Autosource specification
+  // each implementation of the spec should have the same major version
+  // but can evolve with its own minor version
+  // For example:
+  // coreVersion = 1.0 -> reactiveMongo v1.0, 1.1, 1.2, 1.3...
+  val coreVersion  = "1.0-SNAPSHOT"
+
+  val typesafeSnapshotsRepo = Seq(
+    "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
+    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
+  )
 
   val mandubianRepo = Seq(
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
     "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
   )
+
+  val BuildSettings = Defaults.defaultSettings ++ Seq(
+    scalaVersion := "2.10.2",
+    organization := "play-autosource",
+
+    resolvers ++= mandubianRepo
+  ) ++ Publish.settings
 
   lazy val main = Project(
     id = buildName,
@@ -22,12 +34,19 @@ object ApplicationBuild extends Build {
     settings = BuildSettings ++ Seq(
       publish      := {}
     )
-  ) aggregate(core, reactivemongo, datomisca, couchbase)
+  ) aggregate(
+    core,
+    reactivemongo,
+    datomisca,
+    couchbase
+  )
 
   lazy val core = Project(
-    id = "core", 
+    id = "core",
     base = file("core"),
     settings = BuildSettings ++ Seq(
+      version := coreVersion,
+
       libraryDependencies ++= Seq(
         "play-json-zipper"  %% "play-json-zipper"  % "0.1-SNAPSHOT"             ,
         "play"              %% "play-json"         % "2.2-SNAPSHOT"             ,
@@ -42,6 +61,9 @@ object ApplicationBuild extends Build {
     id = "reactivemongo",
     base = file("reactivemongo"),
     settings = BuildSettings ++ Seq(
+      // can be customized by keeping major version of the core version
+      version := coreVersion,
+
       libraryDependencies ++= Seq(
         "org.reactivemongo" %% "play2-reactivemongo" % "0.9",
         "org.reactivemongo" %% "reactivemongo"       % "0.9"
@@ -53,13 +75,16 @@ object ApplicationBuild extends Build {
     id = "datomisca",
     base = file("datomisca"),
     settings = BuildSettings ++ Seq(
+      // can be customized by keeping major version of the core version
+      version := coreVersion,
+
       resolvers ++= Seq(
         "datomisca-repo snapshots" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/snapshots",
         "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases"
       ),
       libraryDependencies ++= Seq(
         "play.modules.datomisca" %% "play-datomisca" % "0.5.1",
-        "com.datomic" % "datomic-free" % "0.8.4007" % "provided" exclude("org.slf4j", "slf4j-nop") 
+        "com.datomic" % "datomic-free" % "0.8.4007" % "provided" exclude("org.slf4j", "slf4j-nop")
       )
     )
   ) dependsOn(core)
@@ -68,6 +93,9 @@ object ApplicationBuild extends Build {
     id = "couchbase",
     base = file("couchbase"),
     settings = BuildSettings ++ Seq(
+      // can be customized by keeping major version of the core version
+      version := coreVersion,
+
       resolvers ++= Seq(
         "Ancelin Repository" at "https://raw.github.com/mathieuancelin/play2-couchbase/master/repository/snapshots",
         "Spy Repository" at "http://files.couchbase.com/maven2"
