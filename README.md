@@ -335,7 +335,7 @@ We are going to use _Angular resources_ for it even if it's not really the best 
 
 _(thanks to Paul Dijou for reviewing this code because I repeat I don't know angularJS at all and I wrote this in 20mn without trying to understand anything :D)_
 
-```scala
+```javascript
 var app =
   // injects ngResource
   angular.module("app", ["ngResource"])
@@ -531,7 +531,7 @@ There are also lots of features to improve/add because it's still a very draft m
 
 If you like it and have ideas, don't hesitate to discuss, to contribute, to improve etc...
 
-`curl -X POST -d "{ "coding" : "Have fun"} http://localhost:9000/developer`
+`curl -X POST -d '{ "coding" : "Have fun"}' http://localhost:9000/developer`
 
 <br/>
 <br/>
