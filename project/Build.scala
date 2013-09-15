@@ -118,11 +118,16 @@ object ApplicationBuild extends Build {
       version := coreVersion,
 
       resolvers ++= Seq(
-        "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
+        "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
+        "Typesafe snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
+        "Sonatype snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
+        Resolver.url("github repo for play-slick", url("http://loicdescotte.github.com/releases/"))(Resolver.ivyStylePatterns)
       ),
 
       libraryDependencies ++= Seq(
-        "com.typesafe.play"  %% "play-slick"             % "0.4.0"
+        "com.typesafe.play"   %%  "play-slick"    % "0.5.0.2",
+        "com.typesafe.play"   %%  "play"          % "2.2.0-M2"        % "provided",
+        "com.typesafe.play"   %%  "play-jdbc"     % "2.2.0-M2"        % "provided"
       )
     )
   ) dependsOn(core)

@@ -23,7 +23,8 @@ import play.autosource.core.AutoSourceRouterContoller
 import slick.dao.{SlickDao, Entity}
 import play.api.libs.json._
 import scala.Some
-import play.api.db.slick.{DBAction, RequestWithDbSession}
+import play.api.db.RequestWithDbSession
+import play.api.db.slick.DBAction
 import play.api.Play.current
 
 abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends AutoSourceRouterContoller[Long] {
@@ -41,7 +42,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
       Json.fromJson[E](jsValue)(reader).map { entity =>
         val persistedEntity: E = {
           Logger.debug("Creating entity in tx: " + entity)
-          dao.add(entity)
+          dao.add(entity)(request.session)
         }
         Created(writer.writes(persistedEntity))
       }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
@@ -50,7 +51,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
 
    def get(id: Long): EssentialAction = DBAction { request =>
-     val persistedEntityOpt = dao.findOptionById(id)
+     val persistedEntityOpt = dao.findOptionById(id)(request.session)
      persistedEntityOpt match {
        case Some(entity) => Ok(writer.writes(entity))
        case None => entityNotFound(id)
@@ -58,8 +59,8 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
    }
 
 
-   def delete(id: Long): EssentialAction = DBAction {
-     dao.deleteById(id) match {
+   def delete(id: Long): EssentialAction = DBAction { request =>
+     dao.deleteById(id)(request.session) match {
        case false => entityNotFound(id)
        case true  => Ok(Json.toJson(id)(idWriter))
      }
@@ -69,7 +70,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
   def update(id: Long): EssentialAction = DBAction { request =>
     parseRequestWithSession(request) { jsValue =>
       Json.fromJson[E](jsValue)(reader).map { t =>
-        dao.update(t)
+        dao.update(t)(request.session)
         Ok(Json.toJson(id)(idWriter))
       }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
     }
@@ -84,7 +85,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    val entities = dao.pagesList(skip, limit)
+    val entities = dao.pagesList(skip, limit)(requestWithSession.session)
     Ok(Json.toJson(entities))
   }
 
@@ -94,7 +95,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    val entities = dao.pagesList(skip, pageSize)
+    val entities = dao.pagesList(skip, pageSize)(requestWithSession.session)
     Ok(Json.toJson(entities))
   }
 
@@ -103,7 +104,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     parseRequestWithSession(request) { jsValue =>
       Json.fromJson[Seq[E]](jsValue)(Reads.seq(reader)).map{ elems =>
         elems.foreach { entity =>
-          dao.add(entity)
+          dao.add(entity)(request.session)
         }
         Ok(Json.obj("nb" -> elems.size))
       }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
@@ -114,7 +115,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
     parseRequestWithSession(request) { jsValue =>
       Json.fromJson[Seq[Long]](jsValue)(Reads.seq(idReader)).map { ids =>
-        ids.foreach(id => dao.deleteById(id))
+        ids.foreach(id => dao.deleteById(id)(request.session))
         Ok(Json.obj("nb" -> ids.size))
       }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
     }
@@ -125,7 +126,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     parseRequestWithSession(request) { jsValue =>
       Json.fromJson[Seq[E]](jsValue)(Reads.seq(reader)).map{ elems =>
         elems.foreach { entity =>
-          dao.update(entity)
+          dao.update(entity)(request.session)
         }
         Ok(Json.obj("nb" -> elems.size))
       }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }

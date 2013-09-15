@@ -19,26 +19,27 @@ import scala.languageFeature.implicitConversions
 import scala.slick.driver.ExtendedProfile
 import play.api.db.slick.DB
 import play.api.Play.current
-
+import scala.slick.session.Session
 
 trait SlickDao[E <: Entity[E]] {
-  def count(): Int
 
-  def add(entity: E): E
+  def count(implicit session: Session): Int
 
-  def update(entity: E): Unit
+  def add(entity: E)(implicit session: Session): E
 
-  def delete(entity: E): Boolean
+  def update(entity: E)(implicit session: Session): Unit
 
-  def deleteById(id: Long): Boolean
+  def delete(entity: E)(implicit session: Session): Boolean
 
-  def findOptionById(id: Long): Option[E]
+  def deleteById(id: Long)(implicit session: Session): Boolean
 
-  def findById(id: Long): E
+  def findOptionById(id: Long)(implicit session: Session): Option[E]
 
-  def pagesList(pageIndex: Int, limit: Int): List[E]
+  def findById(id: Long)(implicit session: Session): E
 
-  def list(): List[E]
+  def pagesList(pageIndex: Int, limit: Int)(implicit session: Session): List[E]
+
+  def list(implicit session: Session): List[E]
 }
 
 
@@ -52,66 +53,51 @@ trait SlickDaoProfile {
 
     def id: Column[Long]
 
-    def count(): Int = DB.withSession {
-      implicit sess =>
-        Query(this.length).first()
-    }
+    def count(implicit session: Session): Int =
+      Query(this.length).first()
 
 
-    private def addWithAutoInc(entity: E): Long =
-      DB.withTransaction {
-        implicit sess =>
-          this.*.returning(this.id).insert(entity)
-      }
+    private def addWithAutoInc(entity: E)(implicit session: Session): Long =
+      this.*.returning(this.id).insert(entity)
 
-    def add(entity: E): E = {
+    def add(entity: E)(implicit session: Session): E = {
       val id: Long = addWithAutoInc(entity)
       entity.withId(id)
     }
 
-    def update(entity: E): Unit =
-      DB.withTransaction { implicit sess: Session =>
-          entity.id match {
-            case Some(id) => filterQuery(id).update(entity)
-            case None => throw new CannotUpdateNonPersistedEntityException(entity)
-          }
+    def update(entity: E)(implicit session: Session): Unit =
+      entity.id match {
+        case Some(id) => filterQuery(id).update(entity)
+        case None => throw new CannotUpdateNonPersistedEntityException(entity)
       }
 
 
     private def filterQuery(id: Long) = this.filter(_.id === id)
 
-    def delete(entity: E): Boolean =
+    def delete(entity: E)(implicit session: Session): Boolean =
       entity.id match {
         case Some(id) => deleteById(id)
         case None => false
       }
 
 
-    def deleteById(id: Long): Boolean =
-      DB.withTransaction { implicit sess =>
-          filterQuery(id).delete > 0
-      }
-
-    def findOptionById(id: Long): Option[E] =
-      DB.withTransaction { implicit sess =>
-        this.createFinderBy(_.id).firstOption(id)
-      }
-
-    def findById(id: Long): E =
-      findOptionById(id).get
+    def deleteById(id: Long)(implicit session: Session): Boolean = filterQuery(id).delete > 0
 
 
-    def pagesList(pageIndex: Int, limit: Int): List[E] =
-      DB.withTransaction { implicit sess =>
-        val query = for {entity <- this} yield entity
-        query.list.drop(pageIndex).take(limit)
-      }
+    def findOptionById(id: Long)(implicit session: Session): Option[E] = this.createFinderBy(_.id).firstOption(id)
 
-    def list(): List[E] =
-      DB.withTransaction { implicit sess =>
-        val query = for {entity <- this} yield entity
-        query.list
-      }
+    def findById(id: Long)(implicit session: Session): E = findOptionById(id).get
+
+
+    def pagesList(pageIndex: Int, limit: Int)(implicit session: Session): List[E] = {
+      val query = for {entity <- this} yield entity
+      query.list.drop(pageIndex).take(limit)
+    }
+
+    def list(implicit session: Session): List[E] = {
+      val query = for {entity <- this} yield entity
+      query.list
+    }
 
   }
 
