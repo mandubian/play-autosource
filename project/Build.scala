@@ -38,7 +38,8 @@ object ApplicationBuild extends Build {
     core,
     reactivemongo,
     datomisca,
-    couchbase
+    couchbase,
+    slick
   )
 
   lazy val core = Project(
@@ -106,6 +107,31 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
+
+
+
+  lazy val slick = Project(
+    id = "slick",
+    base = file("slick"),
+    settings = BuildSettings ++ Seq(
+      // can be customized by keeping major version of the core version
+      version := coreVersion,
+
+      resolvers ++= Seq(
+        "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
+        "Typesafe snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
+        "Sonatype snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
+        Resolver.url("github repo for play-slick", url("http://loicdescotte.github.com/releases/"))(Resolver.ivyStylePatterns)
+      ),
+
+      libraryDependencies ++= Seq(
+        "com.typesafe.play"   %%  "play-slick"    % "0.5.0.2",
+        "com.typesafe.play"   %%  "play"          % "2.2.0-M2"        % "provided",
+        "com.typesafe.play"   %%  "play-jdbc"     % "2.2.0-M2"        % "provided"
+      )
+    )
+  ) dependsOn(core)
+  
 
   object Publish {
     lazy val settings = Seq(
