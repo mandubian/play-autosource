@@ -57,7 +57,7 @@ val appDependencies = Seq()
 val main = play.Project(appName, appVersion, appDependencies).settings(
   resolvers ++= mandubianRepo,
   libraryDependencies ++= Seq(
-    "play-autosource"   %% "reactivemongo"       % "0.1-SNAPSHOT",
+    "play-autosource"   %% "reactivemongo"       % "1.0-SNAPSHOT",
     "org.specs2"        %% "specs2"              % "1.13"        % "test",
     "junit"              % "junit"               % "4.8"         % "test"
   )
