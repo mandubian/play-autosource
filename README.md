@@ -4,7 +4,11 @@
 
 ## An automatic full REST + Typesafe CRUD abstract Datasource for bootstrapping a Play Framework App
 
-> First implementation for [ReactiveMongo](http://www.reactivemongo.org)
+Implementations available for:
+- [ReactiveMongo](http://www.reactivemongo.org)
+- [Couchbase](http://www.couchbase.com) based on Mathieu Ancelin's [Play2-Couchbase](https://github.com/mathieuancelin/play2-couchbase/)
+- [Datomic](http://www.datomic.com) based on [Pellucid](http://www.pellucidanalytics.com)'s [Datomisca](http://pellucidanalytics.github.io/datomisca/)
+- [Slick/JDBC](http://slick.typesafe.com/) based on [Play2-Slick](https://github.com/freekh/play-slick) (thanks to [Loic Descotte](https://github.com/loicdescotte) and [Renato Cavalcanti](https://github.com/rcavalcanti))
 
 <br/>
 
