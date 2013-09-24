@@ -38,7 +38,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
     val id: String = UUID.randomUUID().toString
     val json = writer.writes(t).as[JsObject]
     json \ idKey match {
-      case JsUndefined(_) => {
+      case _:JsUndefined => {
         val newJson = json ++ Json.obj(idKey -> JsString(id))
         bucket.set(id, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => id)(ctx)
       }
@@ -148,7 +148,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
     case (t, id) => {
       val jsObj = res.writer.writes(t).as[JsObject]
       (jsObj \ idKey) match {
-        case JsUndefined(_) => jsObj ++ Json.obj(idKey -> id)
+        case _:JsUndefined => jsObj ++ Json.obj(idKey -> id)
         case actualId => jsObj
       }
     }
@@ -169,7 +169,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
         case Some(tid) => {
           val jsObj = Json.toJson(tid._1)(res.writer).as[JsObject]
           (jsObj \ idKey) match {
-            case JsUndefined(_) => Ok( jsObj ++ Json.obj(idKey -> JsString(id)) )
+            case _:JsUndefined => Ok( jsObj ++ Json.obj(idKey -> JsString(id)) )
             case actualId => Ok( jsObj )
           }
         }

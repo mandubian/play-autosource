@@ -9,12 +9,7 @@ object ApplicationBuild extends Build {
   // but can evolve with its own minor version
   // For example:
   // coreVersion = 1.0 -> reactiveMongo v1.0, 1.1, 1.2, 1.3...
-  val coreVersion  = "1.0-SNAPSHOT"
-
-  val typesafeSnapshotsRepo = Seq(
-    "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
-    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
-  )
+  val coreVersion  = "1.0"
 
   val mandubianRepo = Seq(
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
@@ -49,9 +44,9 @@ object ApplicationBuild extends Build {
       version := coreVersion,
 
       libraryDependencies ++= Seq(
-        "play-json-zipper"  %% "play-json-zipper"  % "0.1-SNAPSHOT"             ,
-        "play"              %% "play-json"         % "2.2-SNAPSHOT"             ,
-        "play"              %% "play"              % "2.1.1"        % "provided",
+        "play-json-zipper"  %% "play-json-zipper"  % "1.0"                      ,
+        "com.typesafe.play" %% "play-json"         % "2.2.0"                    ,
+        "com.typesafe.play" %% "play"              % "2.2.0",
         "org.specs2"        %% "specs2"            % "1.13"         % "test"    ,
         "junit"              % "junit"             % "4.8"          % "test"
       )
@@ -63,11 +58,12 @@ object ApplicationBuild extends Build {
     base = file("reactivemongo"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := coreVersion,
+      version := "1.0-SNAPSHOT",
 
+      resolvers += "Sonatype Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
       libraryDependencies ++= Seq(
-        "org.reactivemongo" %% "play2-reactivemongo" % "0.9",
-        "org.reactivemongo" %% "reactivemongo"       % "0.9"
+        "org.reactivemongo" %% "play2-reactivemongo" % "0.10.0-SNAPSHOT",
+        "org.reactivemongo" %% "reactivemongo"       % "0.10.0-SNAPSHOT"
       )
     )
   ) dependsOn(core)
@@ -77,14 +73,14 @@ object ApplicationBuild extends Build {
     base = file("datomisca"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := coreVersion,
+      version := "1.0",
 
       resolvers ++= Seq(
         "datomisca-repo snapshots" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/snapshots",
         "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases"
       ),
       libraryDependencies ++= Seq(
-        "play.modules.datomisca" %% "play-datomisca" % "0.5.1",
+        "com.pellucid" %% "play-datomisca" % "0.5.2",
         "com.datomic" % "datomic-free" % "0.8.4007" % "provided" exclude("org.slf4j", "slf4j-nop")
       )
     )
@@ -95,15 +91,15 @@ object ApplicationBuild extends Build {
     base = file("couchbase"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := coreVersion,
+      version := "1.0-SNAPSHOT",
 
       resolvers ++= Seq(
         "Ancelin Repository" at "https://raw.github.com/mathieuancelin/play2-couchbase/master/repository/snapshots",
         "Spy Repository" at "http://files.couchbase.com/maven2"
       ),
       libraryDependencies ++= Seq(
-        "org.ancelin.play2.couchbase" %% "play2-couchbase" % "0.1-SNAPSHOT",
-        "play"              %% "play"              % "2.1.1"        % "provided"
+        "org.ancelin.play2.couchbase" %% "play2-couchbase"   % "0.1-SNAPSHOT",
+        "com.typesafe.play"           %% "play"              % "2.2.0"        % "provided"
       )
     )
   ) dependsOn(core)
@@ -115,7 +111,7 @@ object ApplicationBuild extends Build {
     base = file("slick"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := coreVersion,
+      version := "1.0",
 
       resolvers ++= Seq(
         "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
@@ -126,8 +122,8 @@ object ApplicationBuild extends Build {
 
       libraryDependencies ++= Seq(
         "com.typesafe.play"   %%  "play-slick"    % "0.5.0.2",
-        "com.typesafe.play"   %%  "play"          % "2.2.0-M2"        % "provided",
-        "com.typesafe.play"   %%  "play-jdbc"     % "2.2.0-M2"        % "provided"
+        "com.typesafe.play"   %%  "play"          % "2.2.0"        % "provided",
+        "com.typesafe.play"   %%  "play-jdbc"     % "2.2.0"        % "provided"
       )
     )
   ) dependsOn(core)

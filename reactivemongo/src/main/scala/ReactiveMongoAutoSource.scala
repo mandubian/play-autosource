@@ -52,7 +52,7 @@ class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource
     val id = BSONObjectID.generate
     val obj = implicitly[Writes[T]].writes(t).as[JsObject]
     obj \ "_id" match {
-      case JsUndefined(_) =>
+      case _:JsUndefined =>
         coll.insert(obj ++ Json.obj("_id" -> id))
             .map{ _ => id }
 
@@ -87,7 +87,7 @@ class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource
       val id = BSONObjectID.generate
       val obj = implicitly[Writes[T]].writes(t).as[JsObject]
       obj \ "_id" match {
-        case JsUndefined(_) => Json.obj("_id" -> id) ++ obj
+        case _:JsUndefined => Json.obj("_id" -> id) ++ obj
         case _ => obj
       }
     }
