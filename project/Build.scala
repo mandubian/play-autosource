@@ -46,7 +46,7 @@ object ApplicationBuild extends Build {
       libraryDependencies ++= Seq(
         "play-json-zipper"  %% "play-json-zipper"  % "1.0"                      ,
         "com.typesafe.play" %% "play-json"         % "2.2.0"                    ,
-        "com.typesafe.play" %% "play"              % "2.2.0",
+        "com.typesafe.play" %% "play"              % "2.2.0"        % "provided",
         "org.specs2"        %% "specs2"            % "1.13"         % "test"    ,
         "junit"              % "junit"             % "4.8"          % "test"
       )
@@ -63,7 +63,8 @@ object ApplicationBuild extends Build {
       resolvers += "Sonatype Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
       libraryDependencies ++= Seq(
         "org.reactivemongo" %% "play2-reactivemongo" % "0.10.0-SNAPSHOT",
-        "org.reactivemongo" %% "reactivemongo"       % "0.10.0-SNAPSHOT"
+        "org.reactivemongo" %% "reactivemongo"       % "0.10.0-SNAPSHOT",
+        "com.typesafe.play" %% "play"                % "2.2.0"        % "provided"
       )
     )
   ) dependsOn(core)
@@ -80,8 +81,9 @@ object ApplicationBuild extends Build {
         "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases"
       ),
       libraryDependencies ++= Seq(
-        "com.pellucid" %% "play-datomisca" % "0.5.2",
-        "com.datomic" % "datomic-free" % "0.8.4007" % "provided" exclude("org.slf4j", "slf4j-nop")
+        "com.pellucid"      %% "play-datomisca" % "0.5.2",
+        "com.datomic"        % "datomic-free"   % "0.8.4007" % "provided" exclude("org.slf4j", "slf4j-nop"),
+        "com.typesafe.play" %% "play"           % "2.2.0"    % "provided"
       )
     )
   ) dependsOn(core)
@@ -99,6 +101,7 @@ object ApplicationBuild extends Build {
       ),
       libraryDependencies ++= Seq(
         "org.ancelin.play2.couchbase" %% "play2-couchbase"   % "0.1-SNAPSHOT",
+        "com.typesafe.play"           %% "play"              % "2.2.0"        % "provided",
         "com.typesafe.play"           %% "play"              % "2.2.0"        % "provided"
       )
     )
