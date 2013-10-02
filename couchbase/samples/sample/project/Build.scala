@@ -17,7 +17,7 @@ object ApplicationBuild extends Build {
   val main = play.Project(appName, appVersion, appDependencies).settings(
     resolvers ++= mandubianRepo,
     libraryDependencies ++= Seq(
-      "play-autosource"   %% "couchbase"       % "0.1-SNAPSHOT"
+      "play-autosource"   %% "couchbase"       % "1.0-SNAPSHOT" exclude("org.scala-stm", "scala-stm_2.10.0")
     )
   )
 }
