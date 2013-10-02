@@ -100,9 +100,9 @@ object ApplicationBuild extends Build {
         "Spy Repository" at "http://files.couchbase.com/maven2"
       ),
       libraryDependencies ++= Seq(
-        "org.ancelin.play2.couchbase" %% "play2-couchbase"   % "0.1-SNAPSHOT",
+        "org.ancelin.play2.couchbase" %% "play2-couchbase"   % "0.5-SNAPSHOT",
         "com.typesafe.play"           %% "play"              % "2.2.0"        % "provided",
-        "com.typesafe.play"           %% "play"              % "2.2.0"        % "provided"
+        "com.typesafe.play"           %% "play-cache"        % "2.2.0"        % "provided"
       )
     )
   ) dependsOn(core)
