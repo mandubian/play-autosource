@@ -23,7 +23,7 @@ import play.autosource.core.AutoSourceRouterContoller
 import slick.dao.{SlickDao, Entity}
 import play.api.libs.json._
 import scala.Some
-import play.api.db.RequestWithDbSession
+import play.api.db.slick._
 import play.api.db.slick.DBAction
 import play.api.Play.current
 
@@ -136,12 +136,13 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
   private def entityNotFound(id: Long) = NotFound("No entity found for id:" + id)
 
-  private def parseRequestWithSession(requestWithDbSession: RequestWithDbSession)(block:(JsValue) => Result) : Result = {
-    requestWithDbSession.request.body.asJson.map {
-      block
-    }.getOrElse {
-      BadRequest("Illegal json format")
+  private def parseRequestWithSession[A](requestWithDbSession: DBSessionRequest[A])(block:(JsValue) => SimpleResult) : SimpleResult = {
+    val jsValue = requestWithDbSession.request.body match {
+          case AnyContentAsJson(json) => json
+          case AnyContentAsEmpty => Json.obj()
+          case _ => throw new RuntimeException("Body in Request isn't Json")
     }
+    block(jsValue)
   }
 
  }

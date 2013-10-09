@@ -13,7 +13,8 @@ object ApplicationBuild extends Build {
 
   val mandubianRepo = Seq(
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
-    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
+    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/",
+    "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/"
   )
 
   val BuildSettings = Defaults.defaultSettings ++ Seq(
@@ -78,7 +79,9 @@ object ApplicationBuild extends Build {
 
       resolvers ++= Seq(
         "datomisca-repo snapshots" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/snapshots",
-        "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases"
+        "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases",
+        "datomisca-mvn-repo" at "http://dl.bintray.com/content/pellucid/maven",
+        "clojars"   at "https://clojars.org/repo"
       ),
       libraryDependencies ++= Seq(
         "com.pellucid"      %% "play-datomisca" % "0.5.2",
@@ -119,12 +122,11 @@ object ApplicationBuild extends Build {
       resolvers ++= Seq(
         "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
         "Typesafe snapshots" at "http://repo.typesafe.com/typesafe/snapshots/",
-        "Sonatype snapshots" at "https://oss.sonatype.org/content/repositories/snapshots",
-        Resolver.url("github repo for play-slick", url("http://loicdescotte.github.com/releases/"))(Resolver.ivyStylePatterns)
+        "Sonatype snapshots" at "https://oss.sonatype.org/content/repositories/snapshots"
       ),
 
       libraryDependencies ++= Seq(
-        "com.typesafe.play"   %%  "play-slick"    % "0.5.0.2",
+        "com.typesafe.play"   %%  "play-slick"    % "0.5.0.4",
         "com.typesafe.play"   %%  "play"          % "2.2.0"        % "provided",
         "com.typesafe.play"   %%  "play-jdbc"     % "2.2.0"        % "provided"
       )
