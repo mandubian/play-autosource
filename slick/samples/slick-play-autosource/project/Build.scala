@@ -9,8 +9,7 @@ object ApplicationBuild extends Build {
 
   val mandubianRepo = Seq(
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
-    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/",
-    "local" at "file:///Users/Loic/.ivy2/local/"
+    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
   )
 
   val localIvy2Repo = Seq (
