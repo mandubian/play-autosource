@@ -5,11 +5,12 @@ import play.Project._
 object ApplicationBuild extends Build {
 
   val appName         = "slick-play-autosource"
-  val appVersion      = "1.0-SNAPSHOT"
+  val appVersion      = "1.1-SNAPSHOT"
 
   val mandubianRepo = Seq(
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
-    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/"
+    "Mandubian repository releases" at "https://github.com/mandubian/mandubian-mvn/raw/master/releases/",
+    "local" at "file:///Users/Loic/.ivy2/local/"
   )
 
   val localIvy2Repo = Seq (
@@ -26,7 +27,7 @@ object ApplicationBuild extends Build {
 
       // NOTE: there is no repo for slick-autosource yet, 
       // you should build it locally and have it on your local repo
-      "play-autosource"     %%  "slick"               % "1.0-SNAPSHOT" changing(),
+      "play-autosource"     %%  "slick"               % "1.1-SNAPSHOT" changing(),
       "com.h2database"      %   "h2"                  % "1.3.173"
     )
   )
