@@ -97,13 +97,13 @@ class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource
 
   def find(sel: JsObject, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Seq[(T, BSONObjectID)]] = {
     val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
-    val l = if(limit!=0) cursor.toList(limit) else cursor.toList
+    val l = if(limit!=0) cursor.collect[List](limit) else cursor.collect[List]()
     l.map(_.toSeq.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
   }
 
   def findStream(sel: JsObject, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, BSONObjectID)]] = {
     val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
-    val enum = if(pageSize !=0) cursor.enumerateBulks(pageSize) else cursor.enumerateBulks
+    val enum = if(pageSize !=0) cursor.enumerateBulks(pageSize) else cursor.enumerateBulks()
     enum.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
   }
 
