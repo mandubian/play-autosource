@@ -9,7 +9,7 @@ object ApplicationBuild extends Build {
   // but can evolve with its own minor version
   // For example:
   // coreVersion = 1.0 -> reactiveMongo v1.0, 1.1, 1.2, 1.3...
-  val coreVersion  = "1.0"
+  val coreVersion  = "2.0-SNAPSHOT"
 
   val mandubianRepo = Seq(
     "Mandubian repository snapshots" at "https://github.com/mandubian/mandubian-mvn/raw/master/snapshots/",
@@ -32,10 +32,10 @@ object ApplicationBuild extends Build {
     )
   ) aggregate(
     core,
-    reactivemongo,
+    reactivemongo/*,
     datomisca,
     couchbase,
-    slick
+    slick*/
   )
 
   lazy val core = Project(
@@ -59,7 +59,7 @@ object ApplicationBuild extends Build {
     base = file("reactivemongo"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := "1.0-SNAPSHOT",
+      version := "2.0-SNAPSHOT",
 
       resolvers += "Sonatype Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
       libraryDependencies ++= Seq(
@@ -69,13 +69,13 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-
+/*
   lazy val datomisca = Project(
     id = "datomisca",
     base = file("datomisca"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := "1.0",
+      version := "2.0-SNAPSHOT",
 
       resolvers ++= Seq(
         "datomisca-repo snapshots" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/snapshots",
@@ -96,7 +96,7 @@ object ApplicationBuild extends Build {
     base = file("couchbase"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := "1.0-SNAPSHOT",
+      version := "2.0-SNAPSHOT",
 
       resolvers ++= Seq(
         "Ancelin Repository" at "https://raw.github.com/mathieuancelin/play2-couchbase/master/repository/snapshots",
@@ -117,7 +117,7 @@ object ApplicationBuild extends Build {
     base = file("slick"),
     settings = BuildSettings ++ Seq(
       // can be customized by keeping major version of the core version
-      version := "1.1-SNAPSHOT",
+      version := "2.0-SNAPSHOT",
 
       resolvers ++= Seq(
         "Typesafe repository" at "http://repo.typesafe.com/typesafe/releases/",
@@ -132,7 +132,7 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-  
+*/  
 
   object Publish {
     lazy val settings = Seq(

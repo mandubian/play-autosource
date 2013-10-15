@@ -23,24 +23,25 @@ import play.api.libs.iteratee.Enumerator
 
 /**
   * AutoSource controller defining all basic CRUD actions
-  * The only parameterized type is the Id of records
+  * Id is the entity identifier type
+  * A is the type input data parsed by Action's body parser
   */
 trait AutoSourceController[Id] extends Controller {
   /**
     */
-  def insert: EssentialAction
+  def insert: Action[_]
 
-  def get(id: Id): EssentialAction
-  def delete(id: Id): EssentialAction
-  def update(id: Id): EssentialAction
-  def updatePartial(id: Id): EssentialAction
+  def get(id: Id): Action[_]
+  def delete(id: Id): Action[_]
+  def update(id: Id): Action[_]
+  def updatePartial(id: Id): Action[_]
 
-  def find: EssentialAction
-  def findStream: EssentialAction
+  def find: Action[_]
+  def findStream: Action[_]
 
-  def batchInsert: EssentialAction
-  def batchDelete: EssentialAction
-  def batchUpdate: EssentialAction
+  def batchInsert: Action[_]
+  def batchDelete: Action[_]
+  def batchUpdate: Action[_]
 }
 
 /**
@@ -71,7 +72,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
   def prefix = path
   def documentation = Nil
   def routes = new scala.runtime.AbstractPartialFunction[RequestHeader, Handler] {
-    override def applyOrElse[A <: RequestHeader, B >: Handler](rh: A, default: A => B) = {
+    override def applyOrElse[RH <: RequestHeader, H >: Handler](rh: RH, default: RH => H) = {
       if (rh.path.startsWith(path)) {
         (rh.method, rh.path.drop(path.length)) match {
           case ("GET",    Stream())    => findStream
