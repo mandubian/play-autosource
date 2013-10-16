@@ -14,6 +14,7 @@ import reactivemongo.bson.BSONObjectID
 import play.modules.reactivemongo._
 import play.modules.reactivemongo.json.collection.JSONCollection
 
+import play.autosource.core.{AfterAction, BeforeAction}
 import play.autosource.reactivemongo._
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -81,9 +82,29 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
     super.delete(id)(request)
   }
 
-  override def get(id: BSONObjectID) = Authenticated.async { request =>
-    super.get(id)(request)
-  }
+  override def insert =
+    AfterAction{
+      BeforeAction{
+        Authenticated.async(super.insert.parser) { request =>
+          super.insert(request)
+        }
+      } {
+          js => future { play.Logger.info(s"Before Insert Action on js:$js") }
+      }
+    } {
+        js => future { play.Logger.info(s"After Get Action on js:$js") }
+    }
+
+  override def get(id: BSONObjectID) = 
+    AfterAction{
+      BeforeAction{
+        Authenticated.async { request => super.get(id)(request) }
+      } {
+        _ => future { play.Logger.info(s"Before Get Action on id:$id") }
+      }
+    } {
+      _ => future { play.Logger.info(s"After Get Action on id:$id") }
+    }
 
   def index = Action {
     Ok(views.html.index("ok"))
@@ -97,3 +118,4 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
     Ok("logged out").withNewSession
   }
 }
+

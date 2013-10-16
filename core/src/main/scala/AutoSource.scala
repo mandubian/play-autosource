@@ -13,7 +13,8 @@
   * See the License for the specific language governing permissions and
   * limitations under the License.
   */
-package play.autosource.core
+package play.autosource
+package core
 
 import scala.concurrent._
 import play.api.libs.iteratee.Enumerator

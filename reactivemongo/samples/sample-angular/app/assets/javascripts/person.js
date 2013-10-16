@@ -1,6 +1,8 @@
 var app = angular.module("app", ["ngResource"])
   .factory('Person', ["$resource", function($resource){
-    return $resource('persons/:id', { "id" : "@id" });
+    return $resource('persons/:id', 
+      { "id"  : "@id" },
+      { 'save': {method:'POST'} });
   }])
   .controller("PersonCtrl", ["$scope", "Person", function($scope, Person) {
 
