@@ -21,6 +21,7 @@ import datomisca._
 import datomisca.gen.TypedQueryAuto0
 import datomisca.macros.DatomicParser
 
+import play.api.Play
 import play.api.mvc._
 import play.api.libs.json._
 import play.api.libs.iteratee._
@@ -138,188 +139,208 @@ abstract class DatomiscaAutoSourceController[T]
   val conn: Connection
   val partition: Partition
 
+
+  protected lazy val defaultAction: ActionBuilder[Request] = Action
+  protected lazy val getAction:     ActionBuilder[Request] = defaultAction
+  protected lazy val insertAction:  ActionBuilder[Request] = defaultAction
+  protected lazy val updateAction:  ActionBuilder[Request] = defaultAction
+  protected lazy val deleteAction:  ActionBuilder[Request] = defaultAction
+
+  protected def onJsError(request: RequestHeader)(jsError: JsError): Future[SimpleResult] =
+    onBadRequest(request, JsError.toFlatJson(jsError).toString)
+
+  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
+    Play.maybeApplication map { app =>
+      app.global.onBadRequest(request, error)
+    } getOrElse {
+      Future.successful(BadRequest)
+    }
+
   lazy val source = new DatomiscaAutoSource[T](conn, partition)
 
-  val reader: Reads[T] = implicitly[Reads[T]]
-  val updateReader: Reads[PartialAddEntity] = implicitly[Reads[PartialAddEntity]]
-  /*val queryReader: Reads[JsObject] = implicitly[Reads[JsObject]]
-  val updateReader: Reads[JsObject] = implicitly[Reads[JsObject]]
-  val batchReader: Reads[(JsObject, JsObject)] = (
-    (__ \ "query").read(queryReader) and
-    (__ \ "update").read(updateReader)
-  ).tupled
-
-  val limitReader: Reads[Int] = (__ \ "limit").read[Int]
-  val pageSizeReader: Reads[Int] = (__ \ "pageSize").read[Int]
-  val skipReader: Reads[Int] = (__ \ "skip").read[Int]
-  */
-
-  val writer: Writes[T] = implicitly[Writes[T]]
-  val writerWithId = Writes[(T, Long)] {
+  implicit val writerWithId = Writes[(T, Long)] {
     case (t, id) =>
-      val ser = writer.writes(t).as[JsObject]
+      val ser = implicitly[Writes[T]].writes(t).as[JsObject]
       if((__ \ "id")(ser).isEmpty) ser.as[JsObject] ++ Json.obj("id" -> id)
       else ser
   }
   val idWriter = (__ \ "id").write[Long]
 
-  def insert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body)(reader).map{ t =>
-      Async{
-        source.insert(t).map{ id => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+  override def insert =
+    insertAction.async(parse.json) { request =>
+      Json.fromJson[T](request.body) map { t =>
+        source.insert(t) map { id =>
+          Ok(Json.toJson(id)(idWriter))
+        }
+      } recoverTotal onJsError(request)
+    }
 
-  def get(id: Long): EssentialAction = Action{
-    Async{
-      source.get(id).map{
-        case None    => NotFound(s"ID $id not found")
-        case Some(tid) => Ok(Json.toJson(tid)(writerWithId))
+  override def get(id: Long) =
+    getAction.async {
+      source.get(id) map {
+        case None      => NotFound(s"ID $id not found")
+        case Some(tid) => Ok(Json.toJson(tid))
       }
     }
-  }
 
-  def delete(id: Long): EssentialAction = Action{
-    Async{
-      source.delete(id).map{ le => Ok(Json.toJson(id)(idWriter)) }
+  override def delete(id: Long) =
+    deleteAction.async {
+      source.delete(id) map { le =>
+        Ok(Json.toJson(id)(idWriter))
+      }
     }
-  }
 
-  def update(id: Long): EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body)(reader).map{ t =>
-      Async{
-        source.update(id, t).map{ _ => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+  override def update(id: Long) =
+    updateAction.async(parse.json) { request =>
+      Json.fromJson[T](request.body) map { t =>
+          source.update(id, t) map { _ =>
+            Ok(Json.toJson(id)(idWriter))
+          }
+      } recoverTotal onJsError(request)
+    }
 
-  def updatePartial(id: Long): EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[PartialAddEntity](request.body)(updateReader).map{ upd =>
-      Async{
-        source.updatePartial(id, upd).map{ _ => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+  override def updatePartial(id: Long) =
+    updateAction.async(parse.json) { request =>
+      Json.fromJson[PartialAddEntity](request.body) map { upd =>
+        source.updatePartial(id, upd) map { _ =>
+          Ok(Json.toJson(id)(idWriter))
+        }
+      } recoverTotal onJsError(request)
+    }
 
-  def batchInsert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[Seq[T]](request.body)(Reads.seq(reader)).map{ elems =>
-      Async{
-        source.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+  override def batchInsert =
+    insertAction.async(parse.json) { request =>
+      Json.fromJson[Seq[T]](request.body) map { elems =>
+        source.batchInsert(Enumerator(elems:_*)) map { nb =>
+          Ok(Json.obj("nb" -> nb))
+        }
+      } recoverTotal onJsError(request)
+    }
 
-  private def parseQuery[T](request: Request[T]): TypedQueryAuto0[DatomicData] = {
+  private def parseQuery[T](request: Request[T]): Either[String, TypedQueryAuto0[DatomicData]] = {
     request.queryString.get("q") match {
       case None =>
         request.body match {
-          case AnyContentAsText(text) => 
+          case AnyContentAsText(text) =>
             DatomicParser.parseQuerySafe(text) match {
-              case Left(failure) => throw new RuntimeException(s"Body in Request isn't TypedQueryAuto0 failure($failure)")
+              case Left(failure) => Left(s"Request body is not a valid TypedQueryAuto0: failure($failure).")
               case Right(pureQuery) =>
-                if(pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
-                  throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept input params")
-
-                if(pureQuery.find.outputs.length > 1)
-                  throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept more than 1 output param")
-
-                TypedQueryAuto0[DatomicData](pureQuery)
+                if (pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
+                  Left("Request body is not a valid TypedQueryAuto0: can't accept input params.")
+                else if (pureQuery.find.outputs.length > 1)
+                  Left("Request body is not a valid TypedQueryAuto0: can't accept more than 1 output param.")
+                else
+                  Right(TypedQueryAuto0[DatomicData](pureQuery))
             }
-          case _ => throw new RuntimeException("Body in Request isn't TypedQueryAuto0")
+          case _ => Left("Expected text/plain request body.")
         }
 
-      case Some(q)   =>
-        q.headOption.map{ text =>
+      case Some(Seq(text)) =>
           DatomicParser.parseQuerySafe(text) match {
-            case Left(failure) => throw new RuntimeException(s"Body in Request isn't TypedQueryAuto0 failure($failure)")
+            case Left(failure) => Left(s"Query param 'q' is not a valid TypedQueryAuto0: failure($failure).")
             case Right(pureQuery) =>
-              if(pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
-                throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept input params")
-
-              if(pureQuery.find.outputs.length > 1)
-                throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept more than 1 output param")
-
-              TypedQueryAuto0[DatomicData](pureQuery)
+              if (pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
+                Left("Query param 'q' is not a valid TypedQueryAuto0: can't accept input params.")
+              else if (pureQuery.find.outputs.length > 1)
+                Left("Query param 'q' is not a valid TypedQueryAuto0: can't accept more than 1 output param.")
+              else
+                Right(TypedQueryAuto0[DatomicData](pureQuery))
           }
-        }.get
+      case Some(seq) => Left(s"Bad value for query param 'q': $seq")
     }
   }
 
-  private def parseQueryUpdate[T](request: Request[T]): (TypedQueryAuto0[DatomicData], PartialAddEntity) = {
-    val q = request.queryString.get("q") match {
-      case None => throw new RuntimeException("for streamUpdate, query must in query param 'q'")
+  private def parseQueryUpdate[T](request: Request[T]): Either[String, (TypedQueryAuto0[DatomicData], PartialAddEntity)] =
+    for {
+      q <- (
+          request.queryString.get("q") match {
+            case None => Left("for streamUpdate, query must in query param 'q'")
 
-      case Some(q)   =>
-        q.headOption.map{ text =>
-          DatomicParser.parseQuerySafe(text) match {
-            case Left(failure) => throw new RuntimeException(s"Body in Request isn't TypedQueryAuto0 failure($failure)")
-            case Right(pureQuery) =>
-              if(pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
-                throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept input params")
-
-              if(pureQuery.find.outputs.length > 1)
-                throw new RuntimeException("Body in Request isn't TypedQueryAuto0: can't accept more than 1 output param")
-
-              TypedQueryAuto0[DatomicData](pureQuery)
+            case Some(Seq(text))   =>
+                DatomicParser.parseQuerySafe(text) match {
+                  case Left(failure) => Left(s"Request body is not a valid TypedQueryAuto0: failure($failure).")
+                  case Right(pureQuery) =>
+                    if (pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
+                      Left("Request body is not a valid TypedQueryAuto0: can't accept input params")
+                    else if (pureQuery.find.outputs.length > 1)
+                      Left("Request body is not a valid TypedQueryAuto0: can't accept more than 1 output param")
+                    else
+                      Right(TypedQueryAuto0[DatomicData](pureQuery))
+                }
+            case Some(seq) => Left(s"Bad value for query param 'q': $seq")
           }
-        }.get
+        ).right
+      upd <- (
+          request.body match {
+            case AnyContentAsJson(json) =>
+              Json.fromJson[PartialAddEntity](json) map Right.apply recoverTotal { jsError =>
+                Left(s"Request body is not aa valid PartialAddEntity: $jsError.")
+              }
+            case _ => Left("Request body is not text/json or application/json.")
+          }
+        ).right
+    } yield (q, upd)
+
+  private def extractQueryStringInt(request: RequestHeader, param: String): Int =
+    request.queryString.get(param) match {
+      case Some(Seq(str)) =>
+        try { str.toInt } catch { case ex: NumberFormatException => 0 }
+      case _ => 0
     }
 
-    val upd = request.body match {
-      case AnyContentAsJson(json) => 
-        Json.fromJson[PartialAddEntity](json)(updateReader)
-            .recoverTotal{ e => 
-              throw new RuntimeException(
-                "couldn't parse update descriptor as Json from request body error:"+e
-              ) 
-            }
+  override def find =
+    getAction.async { request =>
+      parseQuery(request) match {
+        case Left(error) =>
+          onBadRequest(request, error)
+        case Right(query) =>
+          val limit = extractQueryStringInt(request, "limit")
+          val skip = extractQueryStringInt(request, "skip")
 
-      case _ => throw new RuntimeException("update descriptor in Body Request isn't Json")
-    }
-
-    (q, upd)
-  }  
-
-  def find: EssentialAction = Action{ request =>
-    val query: TypedQueryAuto0[DatomicData] = parseQuery(request)
-    val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-
-    Async{
-      source.find(query, limit, skip).map{ s =>
-        Ok(Json.toJson(s)(Writes.seq(writerWithId)))
+          source.find(query, limit, skip) map { s =>
+            Ok(Json.toJson(s))
+          }
       }
     }
-  }
 
-  def findStream: EssentialAction = Action { request =>
-    val query: TypedQueryAuto0[DatomicData] = parseQuery(request)
-    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-    val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+  override def findStream =
+    getAction.async { request =>
+      parseQuery(request) match {
+        case Left(error) =>
+          onBadRequest(request, error)
+        case Right(query) =>
+          val skip = extractQueryStringInt(request, "skip")
+          val pageSize = extractQueryStringInt(request, "pageSize")
 
-    Ok.stream(
-      source.findStream(query, skip, pageSize)
-            .map{ s => Json.toJson(s.toSeq)(Writes.seq(writerWithId)) }
-            .andThen(Enumerator.eof)
-    )
-  }
-
-  def batchDelete: EssentialAction = Action{ request =>
-    val query: TypedQueryAuto0[DatomicData] = parseQuery(request)
-
-    Async {
-      source.batchDelete(query).map{ _ => Ok("deleted") }
+          Future.successful {
+            Ok.chunked {
+              source.findStream(query, skip, pageSize) map { s =>
+                Json.toJson(s.toSeq)
+              } andThen (Enumerator.eof)
+            }
+          }
+      }
     }
-  }
 
-  def batchUpdate: EssentialAction = Action{ request =>
-    val (q, upd) = parseQueryUpdate(request)
-
-    Async{
-      source.batchUpdate(q, upd).map{ _ => Ok("updated") }
+  override def batchDelete =
+    deleteAction.async { request =>
+      parseQuery(request) match {
+        case Left(error) =>
+          onBadRequest(request, error)
+        case Right(query) =>
+          source.batchDelete(query) map { _ => Ok("deleted") }
+      }
     }
-  }
+
+  override def batchUpdate =
+    updateAction.async { request =>
+      parseQueryUpdate(request) match {
+        case Left(error) =>
+          onBadRequest(request, error)
+        case Right((q, upd)) =>
+          source.batchUpdate(q, upd) map { _ => Ok("updated") }
+      }
+    }
 
 }
 
