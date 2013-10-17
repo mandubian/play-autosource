@@ -20,7 +20,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
 
 object Application0 extends ReactiveMongoAutoSourceController[JsObject] {
-  val coll = db.collection[JSONCollection]("persons")
+  lazy val coll = db.collection[JSONCollection]("persons")
 
   def index = Action {
     Ok(views.html.index("ok"))
@@ -29,7 +29,7 @@ object Application0 extends ReactiveMongoAutoSourceController[JsObject] {
 
 object Application1 extends ReactiveMongoAutoSourceController[JsObject] {
 
-  val coll = db.collection[JSONCollection]("persons")
+  lazy val coll = db.collection[JSONCollection]("persons")
 
   override val reader = __.read[JsObject] keepAnd (
     (__ \ "name").read[String] and
@@ -44,7 +44,7 @@ object Person{
 
 object Application2 extends ReactiveMongoAutoSourceController[Person] {
 
-  val coll = db.collection[JSONCollection]("persons")
+  lazy val coll = db.collection[JSONCollection]("persons")
 
   def index = Action {
     Ok(views.html.index("ok"))
@@ -71,7 +71,7 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
     }
   }
 
-  val coll = db.collection[JSONCollection]("persons")
+  lazy val coll = db.collection[JSONCollection]("persons")
 
   override def delete(id: BSONObjectID) = Authenticated { _ =>
     super.delete(id)
