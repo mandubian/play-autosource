@@ -29,7 +29,6 @@ object Application0 extends ReactiveMongoAutoSourceController[JsObject] {
 }
 
 object Application1 extends ReactiveMongoAutoSourceController[JsObject] {
-
   def coll = db.collection[JSONCollection]("persons")
 
   override val reader = __.read[JsObject] keepAnd (
@@ -44,7 +43,6 @@ object Person{
 }
 
 object Application2 extends ReactiveMongoAutoSourceController[Person] {
-
   def coll = db.collection[JSONCollection]("persons")
 
   def index = Action {

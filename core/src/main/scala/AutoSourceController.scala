@@ -27,22 +27,21 @@ import play.api.libs.iteratee.Enumerator
   * A is the type input data parsed by Action's body parser
   */
 trait AutoSourceController[Id] extends Controller {
-  /**
-    */
-  def insert: Action[_]
+  def insert:                     EssentialAction
+  def get(id: Id):                EssentialAction
+  def delete[A](id: Id):          EssentialAction
+  def update[A](id: Id):          EssentialAction
+  def updatePartial[A](id: Id):   EssentialAction
 
-  def get(id: Id): Action[_]
-  def delete(id: Id): Action[_]
-  def update(id: Id): Action[_]
-  def updatePartial(id: Id): Action[_]
+  def find[A]:                    EssentialAction
+  def findStream[A]:              EssentialAction
 
-  def find: Action[_]
-  def findStream: Action[_]
-
-  def batchInsert: Action[_]
-  def batchDelete: Action[_]
-  def batchUpdate: Action[_]
+  def batchInsert[A]:             EssentialAction
+  def batchDelete[A]:             EssentialAction
+  def batchUpdate[A]:             EssentialAction
 }
+
+
 
 /**
   * Directly inspired (not to say copied ;))
@@ -109,4 +108,34 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
         false
       }
   }
+/*
+  protected def insertAction[A] = insertHook.async(insert.parser){request: Request[A] => insert(request)}
+
+  protected def getAction[A](id: Id) = {
+    val a = get[A](id)
+    getHook.async(a.parser){request: Request[A] => a(request)}
+  }
+
+  protected def deleteAction[A](id: Id) = {
+    val a = delete[A](id)
+    deleteHook.async(a.parser){request: Request[A] => a(request)}
+  }
+
+  protected def updateAction[A](id: Id) = {
+    val a = update[A](id)
+    updateHook.async(a.parser){request: Request[A] => a(request)}
+  }
+
+  protected def updatePartialAction[A](id: Id) = {
+    val a = updatePartial[A](id)
+    updatePartialHook.async(a.parser){request: Request[A] => a(request)}
+  }
+
+  protected def findAction[A] = findHook.async(find.parser){request: Request[A] => find(request)}
+  protected def findStreamAction[A] = findStreamHook.async(findStream.parser){request: Request[A] => findStream(request)}
+
+  protected def batchInsertAction[A] = batchInsertHook.async(batchInsert.parser){request: Request[A] => batchInsert(request)}
+  protected def batchDeleteAction[A] = batchDeleteHook.async(batchDelete.parser){request: Request[A] => batchDelete(request)}
+  protected def batchUpdateAction[A] = batchUpdateHook.async(batchUpdate.parser){request: Request[A] => batchUpdate(request)}
+*/
 }
