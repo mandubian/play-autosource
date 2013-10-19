@@ -76,33 +76,30 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
 
   def coll = db.collection[JSONCollection]("persons")
 
-  override def delete(id: BSONObjectID) = Authenticated.async { request =>
-    super.delete(id)(request)
+  override def delete(id: BSONObjectID) = {
+    val action = super.delete(id).asInstanceOf[Action[AnyContent]]
+    Authenticated.async(request => action(request))
   }
 
-  override def insert =
-    AfterAction{
-      BeforeAction{
-        Authenticated.async(super.insert.parser) { request =>
-          super.insert(request)
-        }
-      } {
-          js => future { play.Logger.info(s"Before Insert Action on js:$js") }
+  override val insertHook = new ActionBuilder[Request]{
+    def invokeBlock[A](request: Request[A], block: Request[A] => Future[SimpleResult]) = {
+      play.Logger.info(s"Before Insert Action")
+      block(request).map{ a =>
+        play.Logger.info(s"After Insert Action")
+        a
       }
-    } {
-        js => future { play.Logger.info(s"After Get Action on js:$js") }
     }
+  }
 
-  override def get(id: BSONObjectID) = 
-    AfterAction{
-      BeforeAction{
-        Authenticated.async { request => super.get(id)(request) }
-      } {
-        _ => future { play.Logger.info(s"Before Get Action on id:$id") }
+  override val getHook = new ActionBuilder[Request]{ 
+    def invokeBlock[A](request: Request[A], block: Request[A] => Future[SimpleResult]) = {
+      play.Logger.info(s"Before Get Action")
+      block(request).map{ a =>
+        play.Logger.info(s"After Get Action")
+        a
       }
-    } {
-      _ => future { play.Logger.info(s"After Get Action on id:$id") }
     }
+  }
 
   def index = Action {
     Ok(views.html.index("ok"))

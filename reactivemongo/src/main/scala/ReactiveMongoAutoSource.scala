@@ -20,6 +20,7 @@ import scala.concurrent._
 import reactivemongo.bson._
 import reactivemongo.api._
 
+import play.api.Play
 import play.api.mvc._
 import play.api.libs.json._
 import play.api.libs.json.syntax._
@@ -122,13 +123,14 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
 }
 
 abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionContext, format: Format[T])
-  extends AutoSourceRouterContoller[BSONObjectID]
+  extends AbstractJsValueAutoSourceController[BSONObjectID, T]
   with MongoController {
 
   def coll: JSONCollection
 
   lazy val res = new ReactiveMongoAutoSource[T](coll)
 
+  val reader: Reads[T] = implicitly[Reads[T]]
   val queryReader: Reads[JsObject] = implicitly[Reads[JsObject]]
   val updateReader: Reads[JsObject] = implicitly[Reads[JsObject]]
   val batchReader: Reads[(JsObject, JsObject)] = (
@@ -152,49 +154,50 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     Json.obj("id" -> id.stringify)
   }
 
-  def insert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body).map{ t =>
-      Async{
-        res.insert(t).map{ id => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  protected def onJsError(request: RequestHeader)(jsError: JsError): Future[SimpleResult] =
+    onBadRequest(request, JsError.toFlatJson(jsError).toString)
+
+  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
+    Play.maybeApplication map { app =>
+      app.global.onBadRequest(request, error)
+    } getOrElse {
+      Future.successful(BadRequest)
+    }
+
+
+  override def insertBlock = { request: Request[JsValue] =>
+    Json.fromJson[T](request.body)(reader) map { t =>
+      res.insert(t) map { id => Ok(Json.toJson(id)(idWriter)) }
+    } recoverTotal onJsError(request)
   }
 
-  def get(id: BSONObjectID): EssentialAction = Action{
-    Async{
-      res.get(id).map{
-        case None    => NotFound(s"ID ${id.stringify} not found")
-        case Some(tid) => Ok(Json.toJson(tid))
-      }
+  override def getBlock(id: BSONObjectID) = { request: Request[AnyContent] =>
+    res.get(id).map{
+      case None    => NotFound(s"ID ${id.stringify} not found")
+      case Some(tid) => Ok(Json.toJson(tid))
     }
   }
 
-  def delete(id: BSONObjectID) = Action{
-    Async{
-      res.delete(id).map{ le => Ok(Json.toJson(id)(idWriter)) }
-    }
+  override def deleteBlock(id: BSONObjectID) = { request: Request[AnyContent] =>
+    res.delete(id).map{ le => Ok(Json.toJson(id)(idWriter)) }
   }
 
-  def update(id: BSONObjectID): EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body).map{ t =>
-      Async{
-        res.update(id, t).map{ _ => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  override def updateBlock(id: BSONObjectID) = { request: Request[JsValue] =>
+    Json.fromJson[T](request.body)(reader) map { t =>
+      res.update(id, t) map { _ => Ok(Json.toJson(id)(idWriter)) }
+    } recoverTotal onJsError(request)
   }
 
-  def updatePartial(id: BSONObjectID) = Action.async(parse.json){ request =>
-    Json.fromJson[JsObject](request.body)(updateReader).map{ upd =>
-      res.updatePartial(id, upd).map{ _ => Ok(Json.toJson(id)(idWriter)) }
-    }.recoverTotal{ e => Future.successful(BadRequest(JsError.toFlatJson(e))) }
+  override def updatePartialBlock(id: BSONObjectID) = { request: Request[JsValue] =>
+    Json.fromJson[JsObject](request.body)(updateReader) map { upd =>
+      res.updatePartial(id, upd) map { _ => Ok(Json.toJson(id)(idWriter)) }
+    } recoverTotal onJsError(request)
   }
 
-  def batchInsert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[Seq[T]](request.body).map{ elems =>
-      Async{
-        res.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+  override def batchInsertBlock = { request: Request[JsValue] =>
+    Json.fromJson[Seq[T]](request.body)(Reads.seq(reader)) map { elems =>
+      res.batchInsert(Enumerator(elems:_*)) map { nb => Ok(Json.obj("nb" -> nb)) }
+    } recoverTotal onJsError(request)
   }
 
   private def parseQuery[T](request: Request[T]): JsValue = {
@@ -215,51 +218,44 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     }
   }
 
-  def find = Action.async { request =>
+  override def findBlock = { request: Request[AnyContent] =>
     val json: JsValue = parseQuery(request)
     val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    Json.fromJson[JsObject](json)(queryReader).map{ js =>
-      Async{
-        res.find(js, limit, skip).map{ s =>
-          Ok(Json.toJson(s))
-        }
+    Json.fromJson[JsObject](json)(queryReader) map { js =>
+      res.find(js, limit, skip) map { s =>
+        Ok(Json.toJson(s))
       }
-    }.recoverTotal{ e => Future.successful(BadRequest(JsError.toFlatJson(e))) }
+    } recoverTotal onJsError(request)
   }
 
-  def findStream = Action { request =>
+  override def findStreamBlock = { request: Request[AnyContent] =>
     val json: JsValue = parseQuery(request)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    Json.fromJson[JsObject](json)(queryReader).map{ js =>
-      Ok.stream(
+    Json.fromJson[JsObject](json)(queryReader) map { js =>
+      Future.successful(Ok.chunked(
         res.findStream(js, skip, pageSize)
            .map( it => Json.toJson(it.toTraversable) )
            .andThen(Enumerator.eof)
-      )
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+      ))
+    } recoverTotal onJsError(request)
   }
 
-  def batchDelete = Action{ request =>
+  override def batchDeleteBlock = { request: Request[AnyContent] =>
     val json: JsValue = parseQuery(request)
-    Json.fromJson[JsObject](json)(queryReader).map{ js =>
-      Async {
-        res.batchDelete(js).map{ _ => Ok("deleted") }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    Json.fromJson[JsObject](json)(queryReader) map { js =>
+      res.batchDelete(js) map { _ => Ok("deleted") }
+    } recoverTotal onJsError(request)
   }
 
-  def batchUpdate = Action{ request =>
+  override def batchUpdateBlock = { request: Request[JsValue] =>
     val json: JsValue = parseQuery(request)
-    Json.fromJson[(JsObject, JsObject)](json)(batchReader).map{
-      case (q, upd) => Async {
-        println(s"q:$q upd:$upd")
-        res.batchUpdate(q, upd).map{ _ => Ok("updated") }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
+    Json.fromJson[(JsObject, JsObject)](json)(batchReader) map {
+      case (q, upd) => res.batchUpdate(q, upd) map { _ => Ok("updated") }
+    } recoverTotal onJsError(request)
   }
 
 }

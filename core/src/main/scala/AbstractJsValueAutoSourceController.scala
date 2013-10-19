@@ -20,95 +20,54 @@ import scala.concurrent._
 import play.api.mvc._
 import play.api.libs.json._
 
-class ARequestWithId[Body, Id](
-  id:       Id,
-  request:  Request[Body]
-) extends WrappedRequest[Body](request)
+trait AutoSourceHooks[Id] {
 
-class ARequestWithEntity[Body, A:Format](
-  entity:   A,
-  request:  Request[Body]
-) extends WrappedRequest[Body](request)
+  def defaultHook:        ActionBuilder[Request] = Action
+  def getHook:            ActionBuilder[Request] = defaultHook
+  def insertHook:         ActionBuilder[Request] = defaultHook
+  def updateHook:         ActionBuilder[Request] = defaultHook
+  def updatePartialHook:  ActionBuilder[Request] = defaultHook
+  def deleteHook:         ActionBuilder[Request] = defaultHook
+  def findHook:           ActionBuilder[Request] = defaultHook
+  def findStreamHook:     ActionBuilder[Request] = defaultHook
 
-class ARequestWithEntityTraversable[Body, A:Format](
-  entity:   TraversableOnce[A],
-  request:  Request[Body]
-) extends WrappedRequest[Body](request)
-
-
-trait AutoSourceHooks[Id, A] {
-  implicit val fmt: Format[A]
-  type RequestWithId[Body] = ({type λ[α] = ARequestWithId[α, Id]})#λ[Body]
-  type RequestWithEntity[Body] = ({type λ[α] = ARequestWithEntity[α, A]})#λ[Body]
-  type RequestWithEntityTraversable[Body] = ({type λ[α] = ARequestWithEntityTraversable[α, A]})#λ[Body]
-
-  def defaultIdHook(id: Id) = new ActionBuilder[RequestWithId] {
-    def invokeBlock[A](request: Request[A], block: (RequestWithId[A]) => Future[SimpleResult]) = 
-      block(new RequestWithId(id, request))
-  }
-
-  def defaultEntityHook(a: A) = new ActionBuilder[RequestWithEntity] {
-    def invokeBlock[A](request: Request[A], block: (RequestWithEntity[A]) => Future[SimpleResult]) = 
-      block(new RequestWithEntity(a, request))
-  }
-
-  def defaultEntityTraversableHook(a: TraversableOnce[A]) = new ActionBuilder[RequestWithEntityTraversable] {
-    def invokeBlock[A](request: Request[A], block: (RequestWithEntityTraversable[A]) => Future[SimpleResult]) = 
-      block(new RequestWithEntityTraversable(a, request))
-  }
-
-  def defaultHook:                            ActionBuilder[Request] = Action
-  def getHook(a: A):                          ActionBuilder[Request] = defaultHook
-  def insertHook:                             ActionBuilder[Request] = defaultHook
-  def updateHook(id: Id):                     ActionBuilder[Request] = defaultHook
-  def updatePartialHook(id: Id):              ActionBuilder[Request] = defaultHook
-  def deleteHook(id: Id):                     ActionBuilder[Request] = defaultHook
-  def findHook(a: TraversableOnce[A]):        ActionBuilder[Request] = defaultHook
-  def findStreamHook(a: TraversableOnce[A]):  ActionBuilder[Request] = defaultHook
-
-  def batchInsertHook:            ActionBuilder[Request] = defaultHook
-  def batchDeleteHook:            ActionBuilder[Request] = defaultHook
-  def batchUpdateHook:            ActionBuilder[Request] = defaultHook
+  def batchInsertHook:    ActionBuilder[Request] = defaultHook
+  def batchDeleteHook:    ActionBuilder[Request] = defaultHook
+  def batchUpdateHook:    ActionBuilder[Request] = defaultHook
 }
 
-abstract class AbstractJsValueAutoSourceController[Id, A : Format]
+abstract class AbstractJsValueAutoSourceController[Id : PathBindable, A : Format]
   extends AutoSourceRouterContoller[Id]
-  with    AutoSourceHooks[Id, A] {
+  with    AutoSourceHooks[Id] {
 
-  def source: AutoSource[A, Id, JsValue]
+  def insertBlock: Request[JsValue] => Future[SimpleResult]
+  override def insert: EssentialAction = insertHook.async(parse.json)(insertBlock)
 
-  def innerInsert(Request[JsValue]): Future[Result])
+  def getBlock(id: Id): Request[AnyContent] => Future[SimpleResult]
+  override def get(id: Id): EssentialAction = getHook.async(getBlock(id))
 
-  override def insert =
-    insertHook.async(parse.json){ request: Request[JsValue] =>
-      innerInsert(request)._2
-    }
+  def deleteBlock(id: Id): Request[AnyContent] => Future[SimpleResult]
+  override def delete(id: Id): EssentialAction = deleteHook.async(deleteBlock(id))
 
-  /*protected def get[A](id: Id) = {
-    val a = get[A](id)
-    getHook.async(a.parser){request: Request[A] => a(request)}
-  }
+  def updateBlock(id: Id): Request[JsValue] => Future[SimpleResult]
+  override def update(id: Id): EssentialAction = updateHook.async(parse.json)(updateBlock(id))
 
-  protected def deleteAction[A](id: Id) = {
-    val a = delete[A](id)
-    deleteHook.async(a.parser){request: Request[A] => a(request)}
-  }
+  def updatePartialBlock(id: Id): Request[JsValue] => Future[SimpleResult]
+  override def updatePartial(id: Id): EssentialAction = updatePartialHook.async(parse.json)(updatePartialBlock(id))
 
-  protected def updateAction[A](id: Id) = {
-    val a = update[A](id)
-    updateHook.async(a.parser){request: Request[A] => a(request)}
-  }
+  def findBlock: Request[AnyContent] => Future[SimpleResult]
+  override def find: EssentialAction = findHook.async(findBlock)
 
-  protected def updatePartialAction[A](id: Id) = {
-    val a = updatePartial[A](id)
-    updatePartialHook.async(a.parser){request: Request[A] => a(request)}
-  }
+  def findStreamBlock: Request[AnyContent] => Future[SimpleResult]
+  override def findStream: EssentialAction = findStreamHook.async(findStreamBlock)
 
-  protected def findAction[A] = findHook.async(find.parser){request: Request[A] => find(request)}
-  protected def findStreamAction[A] = findStreamHook.async(findStream.parser){request: Request[A] => findStream(request)}
+  def batchInsertBlock: Request[JsValue] => Future[SimpleResult]
+  override def batchInsert: EssentialAction = batchInsertHook.async(parse.json)(batchInsertBlock)
 
-  protected def batchInsertAction[A] = batchInsertHook.async(batchInsert.parser){request: Request[A] => batchInsert(request)}
-  protected def batchDeleteAction[A] = batchDeleteHook.async(batchDelete.parser){request: Request[A] => batchDelete(request)}
-  protected def batchUpdateAction[A] = batchUpdateHook.async(batchUpdate.parser){request: Request[A] => batchUpdate(request)}
-  */
+  def batchDeleteBlock: Request[AnyContent] => Future[SimpleResult]
+  override def batchDelete: EssentialAction = batchDeleteHook.async(batchDeleteBlock)
+
+  def batchUpdateBlock: Request[JsValue] => Future[SimpleResult]
+  override def batchUpdate: EssentialAction = batchUpdateHook.async(parse.json)(batchUpdateBlock)
+
 }

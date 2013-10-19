@@ -32,8 +32,8 @@ object ApplicationBuild extends Build {
     )
   ) aggregate(
     core,
-    reactivemongo/*,
-    datomisca,
+    reactivemongo,
+    datomisca/*,
     couchbase,
     slick*/
   )
@@ -69,7 +69,7 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-/*
+
   lazy val datomisca = Project(
     id = "datomisca",
     base = file("datomisca"),
@@ -89,7 +89,7 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-
+/*
   lazy val couchbase = Project(
     id = "couchbase",
     base = file("couchbase"),
