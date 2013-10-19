@@ -15,6 +15,8 @@
   */
 package play.autosource.datomisca
 
+import play.autosource.core._
+
 import scala.concurrent._
 
 import datomisca._
@@ -26,7 +28,6 @@ import play.api.mvc._
 import play.api.libs.json._
 import play.api.libs.iteratee.{Enumeratee, Enumerator, Iteratee}
 
-import play.autosource.core._
 
 
 class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.USER)
@@ -139,22 +140,8 @@ abstract class DatomiscaAutoSourceController[T]
   val conn: Connection
   val partition: Partition
 
-
-  protected lazy val defaultAction: ActionBuilder[Request] = Action
-  protected lazy val getAction:     ActionBuilder[Request] = defaultAction
-  protected lazy val insertAction:  ActionBuilder[Request] = defaultAction
-  protected lazy val updateAction:  ActionBuilder[Request] = defaultAction
-  protected lazy val deleteAction:  ActionBuilder[Request] = defaultAction
-
   protected def onJsError(request: RequestHeader)(jsError: JsError): Future[SimpleResult] =
     onBadRequest(request, JsError.toFlatJson(jsError).toString)
-
-  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
-    Play.maybeApplication map { app =>
-      app.global.onBadRequest(request, error)
-    } getOrElse {
-      Future.successful(BadRequest)
-    }
 
   lazy val source = new DatomiscaAutoSource[T](conn, partition)
 
