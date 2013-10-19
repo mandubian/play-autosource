@@ -82,7 +82,7 @@ trait AutoSource[T, Id, Query, Update] {
     * @return a sequence of (record plus Id) (the Id can be contained in record but not necessarily)
               if there are any DB error, it should be encapsulated in a Future.failed(Exception).
     */
-  def find(sel: Query, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Seq[(T, Id)]]
+  def find(sel: Query, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[TraversableOnce[(T, Id)]]
 
   /** Finds records using a Query selector and streams results page by page 
     * (page streaming can allow better performances than streaming record by reocrd)
@@ -96,7 +96,7 @@ trait AutoSource[T, Id, Query, Update] {
               the iterator represents a page of max size pageSize.
               if there are any DB error, it should be encapsulated in a Future.failed(Exception).
     */
-  def findStream(sel: Query, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, Id)]]
+  def findStream(sel: Query, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, Id)]]
 
   /** Inserts a batch of records and returns the number of inserted records
     *

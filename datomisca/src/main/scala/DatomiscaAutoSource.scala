@@ -24,7 +24,7 @@ import datomisca.macros.DatomicParser
 import play.api.Play
 import play.api.mvc._
 import play.api.libs.json._
-import play.api.libs.iteratee._
+import play.api.libs.iteratee.{Enumeratee, Enumerator, Iteratee}
 
 import play.autosource.core._
 
@@ -82,7 +82,7 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
     }
   }
 
-  override def find(sel: TypedQueryAuto0[DatomicData], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Seq[(T, Long)]] =
+  override def find(sel: TypedQueryAuto0[DatomicData], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Iterable[(T, Long)]] =
     future {
       val db = conn.database
       val res = Datomic.q(sel, db) map {
@@ -92,12 +92,12 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
       } drop (if (skip > 0) skip else 0)
 
       if (limit > 0)
-        res.take(limit).toSeq
+        res.take(limit)
       else
-        res.toSeq
+        res
     }
 
-  override def findStream(sel: TypedQueryAuto0[DatomicData], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, Long)]] = {
+  override def findStream(sel: TypedQueryAuto0[DatomicData], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, Long)]] = {
     val db = conn.database
     val res = Datomic.q(sel, db) map {
       case DLong(id) =>
@@ -106,9 +106,9 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
     } drop (if (skip > 0) skip else 0)
 
     if (pageSize > 0)
-      Enumerator.enumerate(res.sliding(pageSize).map(_.toIterator))
+      Enumerator.enumerate(res.sliding(pageSize))
     else
-      Enumerator.enumerate(Seq(res.toIterator))
+      Enumerator(res)
   }
 
   override def batchDelete(sel: TypedQueryAuto0[DatomicData])(implicit ctx: ExecutionContext): Future[Unit] = {
@@ -315,7 +315,7 @@ abstract class DatomiscaAutoSourceController[T]
           Future.successful {
             Ok.chunked {
               source.findStream(query, skip, pageSize) map { s =>
-                Json.toJson(s.toSeq)
+                Json.toJson(s.toTraversable)
               } andThen (Enumerator.eof)
             }
           }
