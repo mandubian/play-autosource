@@ -78,8 +78,6 @@ object ApplicationBuild extends Build {
       version := "1.0",
 
       resolvers ++= Seq(
-        "datomisca-repo snapshots" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/snapshots",
-        "datomisca-repo releases" at "https://github.com/pellucidanalytics/datomisca-repo/raw/master/releases",
         "datomisca-mvn-repo" at "http://dl.bintray.com/content/pellucid/maven",
         "clojars"   at "https://clojars.org/repo"
       ),

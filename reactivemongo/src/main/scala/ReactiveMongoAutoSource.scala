@@ -47,10 +47,10 @@ object `package` {
     }
 }
 
-class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource[T, BSONObjectID, JsObject, JsObject] {
+class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T]) extends AutoSource[T, BSONObjectID, JsObject, JsObject] {
   def insert(t: T)(implicit ctx: ExecutionContext): Future[BSONObjectID] = {
     val id = BSONObjectID.generate
-    val obj = implicitly[Writes[T]].writes(t).as[JsObject]
+    val obj = format.writes(t).as[JsObject]
     obj \ "_id" match {
       case _:JsUndefined =>
         coll.insert(obj ++ Json.obj("_id" -> id))
@@ -85,7 +85,7 @@ class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource
   def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int] = {
     val enum = elems.map{ t =>
       val id = BSONObjectID.generate
-      val obj = implicitly[Writes[T]].writes(t).as[JsObject]
+      val obj = format.writes(t).as[JsObject]
       obj \ "_id" match {
         case _:JsUndefined => Json.obj("_id" -> id) ++ obj
         case _ => obj
@@ -95,13 +95,13 @@ class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource
     coll.bulkInsert(enum)
   }
 
-  def find(sel: JsObject, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Seq[(T, BSONObjectID)]] = {
+  def find(sel: JsObject, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Traversable[(T, BSONObjectID)]] = {
     val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
-    val l = if(limit!=0) cursor.collect[List](limit) else cursor.collect[List]()
-    l.map(_.toSeq.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
+    val l = if(limit!=0) cursor.collect[Traversable](limit) else cursor.collect[Traversable]()
+    l.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
   }
 
-  def findStream(sel: JsObject, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, BSONObjectID)]] = {
+  def findStream(sel: JsObject, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, BSONObjectID)]] = {
     val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
     val enum = if(pageSize !=0) cursor.enumerateBulks(pageSize) else cursor.enumerateBulks()
     enum.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
@@ -121,7 +121,7 @@ class ReactiveMongoAutoSource[T:Format](coll: JSONCollection) extends AutoSource
 
 }
 
-abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: ExecutionContext)
+abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionContext, format: Format[T])
   extends AutoSourceRouterContoller[BSONObjectID]
   with MongoController {
 
@@ -129,7 +129,6 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
 
   lazy val res = new ReactiveMongoAutoSource[T](coll)
 
-  val reader: Reads[T] = implicitly[Reads[T]]
   val queryReader: Reads[JsObject] = implicitly[Reads[JsObject]]
   val updateReader: Reads[JsObject] = implicitly[Reads[JsObject]]
   val batchReader: Reads[(JsObject, JsObject)] = (
@@ -141,10 +140,9 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
   val pageSizeReader: Reads[Int] = (__ \ "pageSize").read[Int]
   val skipReader: Reads[Int] = (__ \ "skip").read[Int]
 
-  val writer: Writes[T] = implicitly[Writes[T]]
-  val writerWithId = Writes[(T, BSONObjectID)] {
+  implicit val writerWithId = Writes[(T, BSONObjectID)] {
     case (t, id) =>
-      val ser = writer.writes(t).as[JsObject].updateAllKeyNodes{
+      val ser = format.writes(t).as[JsObject].updateAllKeyNodes{
         case ( _ \ "_id", value ) => ("id" -> value \ "$oid")
       }
       if((__ \ "id")(ser).isEmpty) ser.as[JsObject] ++ Json.obj("id" -> id.stringify)
@@ -155,7 +153,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
   }
 
   def insert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body)(reader).map{ t =>
+    Json.fromJson[T](request.body).map{ t =>
       Async{
         res.insert(t).map{ id => Ok(Json.toJson(id)(idWriter)) }
       }
@@ -166,7 +164,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     Async{
       res.get(id).map{
         case None    => NotFound(s"ID ${id.stringify} not found")
-        case Some(tid) => Ok(Json.toJson(tid)(writerWithId))
+        case Some(tid) => Ok(Json.toJson(tid))
       }
     }
   }
@@ -178,7 +176,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
   }
 
   def update(id: BSONObjectID): EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body)(reader).map{ t =>
+    Json.fromJson[T](request.body).map{ t =>
       Async{
         res.update(id, t).map{ _ => Ok(Json.toJson(id)(idWriter)) }
       }
@@ -194,7 +192,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
   }
 
   def batchInsert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[Seq[T]](request.body)(Reads.seq(reader)).map{ elems =>
+    Json.fromJson[Seq[T]](request.body).map{ elems =>
       Async{
         res.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
       }
@@ -227,7 +225,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     Json.fromJson[JsObject](json)(queryReader).map{ js =>
       Async{
         res.find(js, limit, skip).map{ s =>
-          Ok(Json.toJson(s)(Writes.seq(writerWithId)))
+          Ok(Json.toJson(s))
         }
       }
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
@@ -241,7 +239,7 @@ abstract class ReactiveMongoAutoSourceController[T:Format](implicit ctx: Executi
     Json.fromJson[JsObject](json)(queryReader).map{ js =>
       Ok.stream(
         res.findStream(js, skip, pageSize)
-           .map( it => Json.toJson(it.toSeq)(Writes.seq(writerWithId)) )
+           .map( it => Json.toJson(it.toTraversable) )
            .andThen(Enumerator.eof)
       )
     }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
