@@ -17,6 +17,7 @@ package play.autosource.core
 
 import scala.concurrent._
 
+import play.api.Play
 import play.api.mvc._
 import play.core.Router
 import play.api.libs.iteratee.Enumerator
@@ -26,6 +27,7 @@ import play.api.libs.iteratee.Enumerator
   * The only parameterized type is the Id of records
   */
 trait AutoSourceController[Id] extends Controller {
+
   /**
     */
   def insert: EssentialAction
@@ -41,6 +43,20 @@ trait AutoSourceController[Id] extends Controller {
   def batchInsert: EssentialAction
   def batchDelete: EssentialAction
   def batchUpdate: EssentialAction
+
+
+  protected def defaultAction: ActionBuilder[Request] = Action
+  protected def getAction:     ActionBuilder[Request] = defaultAction
+  protected def insertAction:  ActionBuilder[Request] = defaultAction
+  protected def updateAction:  ActionBuilder[Request] = defaultAction
+  protected def deleteAction:  ActionBuilder[Request] = defaultAction
+
+  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
+    Play.maybeApplication map { app =>
+      app.global.onBadRequest(request, error)
+    } getOrElse {
+      Future.successful(BadRequest)
+    }
 }
 
 /**
