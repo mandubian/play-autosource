@@ -63,7 +63,7 @@ trait AutoSourceController[Id] extends Controller {
   */
 abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[Id])
   extends Router.Routes
-  with AutoSourceController[Id] {
+  with    AutoSourceController[Id] {
 
   private var path: String = ""
 
@@ -95,6 +95,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
           case ("PUT",    Partial(id)) => withId(id, updatePartial)
           case ("PATCH",  Partial(id)) => withId(id, updatePartial)
           case ("PUT",    Id(id))      => withId(id, update)
+          case ("PATCH",  Id(id))      => withId(id, update)
 
           case ("POST",   Batch())     => batchInsert
           case ("POST",   Find())      => find
@@ -114,6 +115,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
         (rh.method, rh.path.drop(path.length)) match {
           case ("GET",    Stream()   | Id(_)      | Slash()) => true
           case ("PUT",    Batch()    | Partial(_) | Id(_))   => true
+          case ("PATCH",  Partial(_) | Id(_))                => true
           case ("POST",   Batch()    | Slash())              => true
           case ("DELETE", Batch()    | Id(_))                => true
           case _ => false

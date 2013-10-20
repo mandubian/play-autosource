@@ -14,7 +14,6 @@ import reactivemongo.bson.BSONObjectID
 import play.modules.reactivemongo._
 import play.modules.reactivemongo.json.collection.JSONCollection
 
-import play.autosource.core.{AfterAction, BeforeAction}
 import play.autosource.reactivemongo._
 
 import scala.concurrent.ExecutionContext.Implicits.global
@@ -76,12 +75,14 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
 
   def coll = db.collection[JSONCollection]("persons")
 
-  override def delete(id: BSONObjectID) = {
+  override val deleteAction = Authenticated.asInstanceOf[ActionBuilder[Request]]
+
+  /*override def delete(id: BSONObjectID) = {
     val action = super.delete(id).asInstanceOf[Action[AnyContent]]
     Authenticated.async(request => action(request))
-  }
+  }*/
 
-  override val insertHook = new ActionBuilder[Request]{
+  override val insertAction = new ActionBuilder[Request]{
     def invokeBlock[A](request: Request[A], block: Request[A] => Future[SimpleResult]) = {
       play.Logger.info(s"Before Insert Action")
       block(request).map{ a =>
@@ -91,7 +92,8 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
     }
   }
 
-  override val getHook = new ActionBuilder[Request]{ 
+  override val getAction = Authenticated.asInstanceOf[ActionBuilder[Request]] 
+  /*new ActionBuilder[Request]{
     def invokeBlock[A](request: Request[A], block: Request[A] => Future[SimpleResult]) = {
       play.Logger.info(s"Before Get Action")
       block(request).map{ a =>
@@ -99,7 +101,7 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
         a
       }
     }
-  }
+  }*/
 
   def index = Action {
     Ok(views.html.index("ok"))

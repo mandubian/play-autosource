@@ -33,7 +33,7 @@ import play.api.libs.iteratee.{Enumeratee, Enumerator, Iteratee}
 class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.USER)
   ( implicit datomicReader: EntityReader[T],
              datomicWriter: PartialAddEntityWriter[T]
-  ) extends AutoSource[T, Long, TypedQueryAuto0[DatomicData], PartialAddEntity] {
+  ) extends AutoSource[T, Long, TypedQueryAuto0[DatomicData], PartialAddEntity, Int] {
 
   implicit val _conn = conn
 
@@ -112,18 +112,18 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
       Enumerator(res)
   }
 
-  override def batchDelete(sel: TypedQueryAuto0[DatomicData])(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def batchDelete(sel: TypedQueryAuto0[DatomicData])(implicit ctx: ExecutionContext): Future[Int] = {
     val txData = Datomic.q(sel, conn.database).map{
       case DLong(id) => Entity.retract(id)
     }.toSeq
-    Datomic.transact(txData).map( _ => ())
+    Datomic.transact(txData).map( _ => txData.length )
   }
 
-  override def batchUpdate(sel: TypedQueryAuto0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def batchUpdate(sel: TypedQueryAuto0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Int] = {
     val txData = Datomic.q(sel, conn.database).map{
       case DLong(id) => Entity.add(DId(id), upd)
     }.toSeq
-    Datomic.transact(txData).map( _ => ())
+    Datomic.transact(txData).map( _ => txData.length )
   }
 
 }
@@ -145,7 +145,7 @@ abstract class DatomiscaAutoSourceController[T]
 
   lazy val source = new DatomiscaAutoSource[T](conn, partition)
 
-  implicit val writerWithId = Writes[(T, Long)] {
+  private implicit val writerWithId = Writes[(T, Long)] {
     case (t, id) =>
       val ser = implicitly[Writes[T]].writes(t).as[JsObject]
       if((__ \ "id")(ser).isEmpty) ser.as[JsObject] ++ Json.obj("id" -> id)
@@ -315,7 +315,7 @@ abstract class DatomiscaAutoSourceController[T]
         case Left(error) =>
           onBadRequest(request, error)
         case Right(query) =>
-          source.batchDelete(query) map { _ => Ok("deleted") }
+          source.batchDelete(query) map { nb => Ok(Json.obj("nb" -> nb)) }
       }
     }
 
@@ -325,7 +325,7 @@ abstract class DatomiscaAutoSourceController[T]
         case Left(error) =>
           onBadRequest(request, error)
         case Right((q, upd)) =>
-          source.batchUpdate(q, upd) map { _ => Ok("updated") }
+          source.batchUpdate(q, upd) map { nb => Ok(Json.obj("nb" -> nb)) }
       }
     }
 

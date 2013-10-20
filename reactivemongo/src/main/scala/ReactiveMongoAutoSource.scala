@@ -21,6 +21,7 @@ import scala.concurrent.{ExecutionContext, Future}
 
 import reactivemongo.bson.BSONObjectID
 import reactivemongo.api.QueryOpts
+import reactivemongo.core.commands.LastError
 
 import play.api.Play
 import play.api.mvc._
@@ -49,7 +50,7 @@ object `package` {
     }
 }
 
-class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T]) extends AutoSource[T, BSONObjectID, JsObject, JsObject] {
+class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T]) extends AutoSource[T, BSONObjectID, JsObject, JsObject, LastError] {
   override def insert(t: T)(implicit ctx: ExecutionContext): Future[BSONObjectID] = {
     val id = BSONObjectID.generate
     val obj = format.writes(t).as[JsObject]
@@ -84,7 +85,7 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
     ).map{ _ => () }
   }
 
-  override def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int] = {
+  override def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[LastError] = {
     val enum = elems.map{ t =>
       val id = BSONObjectID.generate
       val obj = format.writes(t).as[JsObject]
@@ -94,7 +95,9 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
       }
     }
 
-    coll.bulkInsert(enum)
+    coll.bulkInsert(enum) map { nb => 
+      LastError(true, None, None, None, None, 1, false)
+    }
   }
 
   override def find(sel: JsObject, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Traversable[(T, BSONObjectID)]] = {
@@ -109,22 +112,22 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
     enum.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
   }
 
-  override def batchDelete(sel: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
-    coll.remove(sel).map( _ => () )
+  override def batchDelete(sel: JsObject)(implicit ctx: ExecutionContext): Future[LastError] = {
+    coll.remove(sel)
   }
 
-  override def batchUpdate(sel: JsObject, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def batchUpdate(sel: JsObject, upd: JsObject)(implicit ctx: ExecutionContext): Future[LastError] = {
     coll.update(
       sel,
       Json.obj("$set" -> upd),
       multi = true
-    ).map{ _ => () }
+    )
   }
 
 }
 
 abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionContext, format: Format[T])
-  extends AutoSourceController[BSONObjectID]
+  extends AutoSourceRouterContoller[BSONObjectID]
   with MongoController {
 
   def coll: JSONCollection
@@ -189,7 +192,7 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
       }
     }
 
-  override def get(id: BSONObjectID): EssentialAction =
+  override def get(id: BSONObjectID) =
     getAction.async {
       res.get(id) map {
         case None      => NotFound(s"ID ${id.stringify} not found")
@@ -197,25 +200,25 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
       }
     }
 
-  override def delete(id: BSONObjectID): EssentialAction =
+  override def delete(id: BSONObjectID) =
     deleteAction.async {
       res.delete(id) map { _ => Ok(Json.toJson(id)) }
     }
 
-  override def update(id: BSONObjectID): EssentialAction =
+  override def update(id: BSONObjectID) =
     updateAction.async(bodyReader(reader)) { request =>
       res.update(id, request.body) map { _ => Ok(Json.toJson(id)) }
     }
 
-  override def updatePartial(id: BSONObjectID): EssentialAction =
+  override def updatePartial(id: BSONObjectID) =
     updateAction.async(bodyReader(updateReader)) { request =>
       res.updatePartial(id, request.body) map { _ => Ok(Json.toJson(id)) }
     }
 
-  override def batchInsert: EssentialAction =
+  override def batchInsert =
     insertAction.async(bodyReader(Reads.seq(reader))) { request =>
-      res.batchInsert(Enumerator.enumerate(request.body)) map { nb =>
-        Ok(Json.obj("nb" -> nb))
+      res.batchInsert(Enumerator.enumerate(request.body)) map { lasterror =>
+        Ok(Json.obj("nb" -> lasterror.updated))
       }
     }
 
@@ -252,7 +255,7 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
       case _ => 0
     }
 
-  override def find: EssentialAction =
+  override def find =
     getAction.async(requestParser(queryReader)) { request =>
       val query = request.body
       val limit = extractQueryStringInt(request, "limit")
@@ -263,7 +266,7 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
       }
     }
 
-  override def findStream: EssentialAction =
+  override def findStream =
     getAction.async(requestParser(queryReader)) { request =>
       val query    = request.body
       val skip     = extractQueryStringInt(request, "skip")
@@ -278,16 +281,16 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
       }
     }
 
-  override def batchDelete: EssentialAction =
+  override def batchDelete =
     deleteAction.async(requestParser(queryReader)) { request =>
       val query = request.body
-      res.batchDelete(query) map { _ => Ok("deleted") }
+      res.batchDelete(query) map { lasterror => Ok(Json.obj("nb" -> lasterror.updated)) }
     }
 
-  override def batchUpdate: EssentialAction =
+  override def batchUpdate =
     updateAction.async(requestParser(batchReader)) { request =>
       val (q, upd) = request.body
-      res.batchUpdate(q, upd) map { _ => Ok("updated") }
+      res.batchUpdate(q, upd) map { lasterror => Ok(Json.obj("nb" -> lasterror.updated)) }
     }
 
 }
