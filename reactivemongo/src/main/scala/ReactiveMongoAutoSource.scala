@@ -129,6 +129,9 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
 
   def coll: JSONCollection
 
+  /** Override this to customize how JsErrors are reported.
+    * The implementation should call onBadRequest
+    */
   protected def onJsError(request: RequestHeader)(jsError: JsError): Future[SimpleResult] =
     onBadRequest(request, JsError.toFlatJson(jsError).toString)
 
@@ -140,9 +143,13 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
 
   lazy val res = new ReactiveMongoAutoSource[T](coll)(Format(reader, writer))
 
-  /** Override to cutomize deserialization of query objects. */
+  /** Override to cutomize deserialization of queries. */
   protected val queryReader: Reads[JsObject] = implicitly[Reads[JsObject]]
+
+  /** Override to cutomize deserialization of updates. */
   protected val updateReader: Reads[JsObject] = implicitly[Reads[JsObject]]
+
+  /** Override to cutomize deserialization of queries and batch updates. */
   protected val batchReader: Reads[(JsObject, JsObject)] = (
     (__ \ "query").read(queryReader) and
     (__ \ "update").read(updateReader)
@@ -161,13 +168,25 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     Json.obj("id" -> id.stringify)
   }
 
-  override def insert =
-    insertAction.async(parse.json) { request =>
-      Json.fromJson(request.body)(reader) map { t =>
-          res.insert(t) map { id =>
-            Ok(Json.toJson(id))
+  private def bodyReader[A](reader: Reads[A]): BodyParser[A] =
+    BodyParser("ReactiveMongoAutoSourceController body reader") { request =>
+      parse.json(request) mapM {
+        case Right(jsValue) =>
+          jsValue.validate(reader) map { a =>
+            Future.successful(Right(a))
+          } recoverTotal { jsError =>
+            onJsError(request)(jsError) map Left.apply
           }
-      } recoverTotal onJsError(request)
+        case left_simpleResult =>
+          Future.successful(left_simpleResult.asInstanceOf[Either[SimpleResult, A]])
+      }
+    }
+
+  override def insert =
+    insertAction.async(bodyReader(reader)) { request =>
+      res.insert(request.body) map { id =>
+        Ok(Json.toJson(id))
+      }
     }
 
   override def get(id: BSONObjectID) =
@@ -184,42 +203,27 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     }
 
   override def update(id: BSONObjectID) =
-    updateAction.async(parse.json) { request =>
-      Json.fromJson(request.body)(reader) map { t =>
-        res.update(id, t) map { _ => Ok(Json.toJson(id)) }
-      } recoverTotal onJsError(request)
+    updateAction.async(bodyReader(reader)) { request =>
+      res.update(id, request.body) map { _ => Ok(Json.toJson(id)) }
     }
 
   override def updatePartial(id: BSONObjectID) =
-    updateAction.async(parse.json) { request =>
-      Json.fromJson(request.body)(updateReader) map { upd =>
-        res.updatePartial(id, upd) map { _ => Ok(Json.toJson(id)) }
-      } recoverTotal onJsError(request)
+    updateAction.async(bodyReader(updateReader)) { request =>
+      res.updatePartial(id, request.body) map { _ => Ok(Json.toJson(id)) }
     }
 
   override def batchInsert =
-    insertAction.async(parse.json) { request =>
-      Json.fromJson(request.body)(Reads.seq(reader)) map { elems =>
-        res.batchInsert(Enumerator.enumerate(elems)) map { nb =>
-          Ok(Json.obj("nb" -> nb))
-        }
-      } recoverTotal onJsError(request)
+    insertAction.async(bodyReader(Reads.seq(reader))) { request =>
+      res.batchInsert(Enumerator.enumerate(request.body)) map { nb =>
+        Ok(Json.obj("nb" -> nb))
+      }
     }
 
-  private def requestParser[A](implicit reader: Reads[A]): BodyParser[A] =
+  private def requestParser[A](reader: Reads[A]): BodyParser[A] =
     BodyParser("ReactiveMongoAutoSourceController request parser") { request =>
       request.queryString.get("q") match {
         case None =>
-          parse.json(request) mapM {
-            case Right(jsValue) =>
-              jsValue.validate(reader) map { a =>
-                Future.successful(Right(a))
-              } recoverTotal { jsError =>
-                onJsError(request)(jsError) map Left.apply
-              }
-            case left_simpleResult =>
-              Future.successful(left_simpleResult.asInstanceOf[Either[SimpleResult, A]])
-          }
+          bodyReader(reader)(request)
         case Some(Seq(str)) =>
           parse.empty(request) mapM { _ =>
             try {
