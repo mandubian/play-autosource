@@ -17,6 +17,7 @@ package play.autosource.core
 
 import scala.concurrent._
 
+import play.api.Play
 import play.api.mvc._
 import play.core.Router
 import play.api.libs.iteratee.Enumerator
@@ -39,9 +40,21 @@ trait AutoSourceController[Id] extends Controller {
   def batchInsert:             EssentialAction
   def batchDelete:             EssentialAction
   def batchUpdate:             EssentialAction
+
+  /** Provides Hooks based on ActionBuilder */
+  protected def defaultAction: ActionBuilder[Request] = Action
+  protected def getAction:     ActionBuilder[Request] = defaultAction
+  protected def insertAction:  ActionBuilder[Request] = defaultAction
+  protected def updateAction:  ActionBuilder[Request] = defaultAction
+  protected def deleteAction:  ActionBuilder[Request] = defaultAction
+
+  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
+    Play.maybeApplication map { app =>
+      app.global.onBadRequest(request, error)
+    } getOrElse {
+      Future.successful(BadRequest)
+    }
 }
-
-
 
 /**
   * Directly inspired (not to say copied ;))
@@ -80,6 +93,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
 
           case ("PUT",    Batch())     => batchUpdate
           case ("PUT",    Partial(id)) => withId(id, updatePartial)
+          case ("PATCH",  Partial(id)) => withId(id, updatePartial)
           case ("PUT",    Id(id))      => withId(id, update)
 
           case ("POST",   Batch())     => batchInsert
