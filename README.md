@@ -5,7 +5,7 @@
 ## An automatic full REST + Typesafe CRUD abstract Datasource for bootstrapping a Play Framework App
 
 Implementations available for:
-- [ReactiveMongo](http://www.reactivemongo.org) ( _play-autosource:reactivemongo:1.0-SNAPSHOT_ )
+- [ReactiveMongo](http://www.reactivemongo.org) ( _play-autosource:reactivemongo:0.1-SNAPSHOT_ )
 - [Couchbase](http://www.couchbase.com) based on Mathieu Ancelin's [Play2-Couchbase](https://github.com/mathieuancelin/play2-couchbase/) ( _play-autosource:couchbase:1.0-SNAPSHOT_ )
 - [Datomic](http://www.datomic.com) based on [Pellucid](http://www.pellucidanalytics.com)'s [Datomisca](http://pellucidanalytics.github.io/datomisca/) ( _play-autosource:datomisca:1.0_ )
 - [Slick/JDBC](http://slick.typesafe.com/) based on [Play2-Slick](https://github.com/freekh/play-slick) (thanks to [Loic Descotte](https://github.com/loicdescotte) and [Renato Cavalcanti](https://github.com/rcavalcanti)) ( _play-autosource:slick:1.0_ )
@@ -57,7 +57,7 @@ val appDependencies = Seq()
 val main = play.Project(appName, appVersion, appDependencies).settings(
   resolvers ++= mandubianRepo,
   libraryDependencies ++= Seq(
-    "play-autosource"   %% "reactivemongo"       % "1.0-SNAPSHOT",
+    "play-autosource"   %% "reactivemongo"       % "0.1-SNAPSHOT",
     "org.specs2"        %% "specs2"              % "1.13"        % "test",
     "junit"              % "junit"               % "4.8"         % "test"
   )
