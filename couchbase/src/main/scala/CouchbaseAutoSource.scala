@@ -123,7 +123,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
             case actualId: JsString => (t, actualId.value)
             case _ => (t, i.id.get)
           }
-        }.grouped(size).map(_.toList))
+        }.grouped(size).map(_.iterator))
     }
    Enumerator.flatten(futureEnumerator)
   }
