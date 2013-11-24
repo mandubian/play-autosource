@@ -15,19 +15,34 @@
   */
 package play.autosource.couchbase
 
-import play.api.libs.json._
-import play.autosource.core.{AutoSourceRouterContoller, AutoSource}
-import scala.concurrent.{Future, ExecutionContext}
-import play.api.libs.iteratee.{Iteratee, Enumerator}
-
-import org.ancelin.play2.couchbase.{CouchbaseRWImplicits, CouchbaseBucket}
-import org.ancelin.play2.couchbase.crud.QueryObject
-import com.couchbase.client.protocol.views.{Query, View}
-
 import java.util.UUID
-import play.api.mvc._
-import play.api.libs.json.JsUndefined
+
+import scala.concurrent.ExecutionContext
+import scala.concurrent.Future
+
+import org.ancelin.play2.couchbase.CouchbaseBucket
+import org.ancelin.play2.couchbase.CouchbaseRWImplicits
+import org.ancelin.play2.couchbase.crud.QueryObject
+
+import com.couchbase.client.protocol.views.Query
+import com.couchbase.client.protocol.views.View
+
+import play.api.libs.iteratee.Enumerator
+import play.api.libs.iteratee.Iteratee
+import play.api.libs.json.Format
+import play.api.libs.json.JsError
 import play.api.libs.json.JsObject
+import play.api.libs.json.JsString
+import play.api.libs.json.JsSuccess
+import play.api.libs.json.JsUndefined
+import play.api.libs.json.Json
+import play.api.libs.json.Json.toJsFieldJsValueWrapper
+import play.api.libs.json.Reads
+import play.api.libs.json.Writes
+import play.api.mvc.Action
+import play.api.mvc.EssentialAction
+import play.autosource.core.AutoSource
+import play.autosource.core.AutoSourceRouterContoller
 
 class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_id") extends AutoSource[T, String, (View, Query), JsObject] {
 
@@ -87,16 +102,17 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
         }
         i.document \ idKey match {
           case actualId: JsString => (t, actualId.value)
-          case _ => (t, i.id)
+          case _ => (t, i.id.get)
         }
       }
     }
   }
 
-  def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[Iterator[(T, String)]] = {
+  def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, String)]] = {
     var query = sel._2
     if (skip != 0) query = query.setSkip(skip)
-    val futureEnumerator = bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { l =>
+    val futureEnumerator:Future[Enumerator[TraversableOnce[(T, 
+ String)]]] = bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
       Enumerator.enumerate(l.map { i => 
           val t = reader.reads(i.document) match {
@@ -105,17 +121,17 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
           }
           i.document \ idKey match {
             case actualId: JsString => (t, actualId.value)
-            case _ => (t, i.id)
+            case _ => (t, i.id.get)
           }
         }.grouped(size).map(_.iterator))
     }
-    Enumerator.flatten(futureEnumerator)
+   Enumerator.flatten(futureEnumerator)
   }
 
   def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
     bucket.search[JsObject](sel._1)(sel._2)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { list =>
       list.map { t =>
-        delete(t.id)(ctx)
+        delete(t.id.get)(ctx)
       }
     }
   }
@@ -125,7 +141,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
       list.map { t =>
         val json = Json.toJson(t.document)(writer).as[JsObject]
         val newJson = json.deepMerge(upd)
-        bucket.replace(t.id, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
+        bucket.replace(t.id.get, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }
     }
   }
