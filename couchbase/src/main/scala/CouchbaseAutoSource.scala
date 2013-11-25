@@ -97,7 +97,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
   def findStream(sel: (View, Query), skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, String)]] = {
     var query = sel._2
     if (skip != 0) query = query.setSkip(skip)
-    val futureEnumerator = bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { l =>
+    val futureEnumerator: Future[Enumerator[TraversableOnce[(T, String)]]] = bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
       Enumerator.enumerate(l.map { i => 
           val t = reader.reads(i.document) match {
@@ -108,7 +108,8 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
             case actualId: JsString => (t, actualId.value)
             case _ => (t, i.id.getOrElse("_"))
           }
-        }.grouped(size).map(_.toSeq.asInstanceOf[TraversableOnce[(T, String)]]))
+        }.grouped(size).map(_.toSeq)
+      )
     }
     Enumerator.flatten(futureEnumerator)
   }
