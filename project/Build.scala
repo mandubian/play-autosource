@@ -84,7 +84,7 @@ object ApplicationBuild extends Build {
       libraryDependencies ++= Seq(
         "com.pellucid"      %% "datomisca"      % "0.6",
         "com.pellucid"      %% "play-datomisca" % "0.6",
-        "com.datomic"        % "datomic-free"   % "0.8.4218" % "provided" exclude("org.slf4j", "slf4j-nop"),
+        "com.datomic"        % "datomic-free"   % "0.9.4324" % "provided" exclude("org.slf4j", "slf4j-nop"),
         "com.typesafe.play" %% "play"           % "2.2.1"    % "provided"
       )
     )
