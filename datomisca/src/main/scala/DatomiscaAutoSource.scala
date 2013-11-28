@@ -20,20 +20,17 @@ import play.autosource.core._
 import scala.concurrent._
 
 import datomisca._
-import datomisca.gen.TypedQueryAuto0
-import datomisca.macros.DatomicParser
+import datomisca.gen.TypedQuery0
 
 import play.api.Play
 import play.api.mvc._
 import play.api.libs.json._
 import play.api.libs.iteratee.{Enumeratee, Enumerator, Iteratee}
 
-
-
 class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.USER)
   ( implicit datomicReader: EntityReader[T],
              datomicWriter: PartialAddEntityWriter[T]
-  ) extends AutoSource[T, Long, TypedQueryAuto0[DatomicData], PartialAddEntity, Int] {
+  ) extends AutoSource[T, Long, TypedQuery0[DatomicData], PartialAddEntity, Int] {
 
   implicit val _conn = conn
 
@@ -48,10 +45,11 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
   override def get(id: Long)(implicit ctx: ExecutionContext): Future[Option[(T, Long)]] =
     future {
       val entity = conn.database.entity(id)
-      Some(DatomicMapping.fromEntity[T](entity), id)
-    } recover {
+      if(entity.keySet.isEmpty) None
+      else Some(DatomicMapping.fromEntity[T](entity), id)
+    }/* recover {
       case e: datomisca.EntityNotFoundException => None
-    }
+    }*/
 
   override def delete(id: Long)(implicit ctx: ExecutionContext): Future[Unit] = {
     Datomic.transact(Entity.retract(id)).map( _ => () )
@@ -83,7 +81,7 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
     }
   }
 
-  override def find(sel: TypedQueryAuto0[DatomicData], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Iterable[(T, Long)]] =
+  override def find(sel: TypedQuery0[DatomicData], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Iterable[(T, Long)]] =
     future {
       val db = conn.database
       val res = Datomic.q(sel, db) map {
@@ -98,7 +96,7 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
         res
     }
 
-  override def findStream(sel: TypedQueryAuto0[DatomicData], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, Long)]] = {
+  override def findStream(sel: TypedQuery0[DatomicData], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, Long)]] = {
     val db = conn.database
     val res = Datomic.q(sel, db) map {
       case DLong(id) =>
@@ -112,14 +110,14 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
       Enumerator(res)
   }
 
-  override def batchDelete(sel: TypedQueryAuto0[DatomicData])(implicit ctx: ExecutionContext): Future[Int] = {
+  override def batchDelete(sel: TypedQuery0[DatomicData])(implicit ctx: ExecutionContext): Future[Int] = {
     val txData = Datomic.q(sel, conn.database).map{
       case DLong(id) => Entity.retract(id)
     }.toSeq
     Datomic.transact(txData).map( _ => txData.length )
   }
 
-  override def batchUpdate(sel: TypedQueryAuto0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Int] = {
+  override def batchUpdate(sel: TypedQuery0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Int] = {
     val txData = Datomic.q(sel, conn.database).map{
       case DLong(id) => Entity.add(DId(id), upd)
     }.toSeq
@@ -204,56 +202,32 @@ abstract class DatomiscaAutoSourceController[T]
       } recoverTotal onJsError(request)
     }
 
-  private def parseQuery[T](request: Request[T]): Either[String, TypedQueryAuto0[DatomicData]] = {
+  private def parseQuery[T](request: Request[T]): Either[String, TypedQuery0[DatomicData]] = {
+
     request.queryString.get("q") match {
       case None =>
         request.body match {
-          case AnyContentAsText(text) =>
-            DatomicParser.parseQuerySafe(text) match {
-              case Left(failure) => Left(s"Request body is not a valid TypedQueryAuto0: failure($failure).")
-              case Right(pureQuery) =>
-                if (pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
-                  Left("Request body is not a valid TypedQueryAuto0: can't accept input params.")
-                else if (pureQuery.find.outputs.length > 1)
-                  Left("Request body is not a valid TypedQueryAuto0: can't accept more than 1 output param.")
-                else
-                  Right(TypedQueryAuto0[DatomicData](pureQuery))
-            }
+          case AnyContentAsText(text) => 
+            DatomiscaQueryParser.parseTypedQuery0(text)
+
           case _ => Left("Expected text/plain request body.")
         }
 
-      case Some(Seq(text)) =>
-          DatomicParser.parseQuerySafe(text) match {
-            case Left(failure) => Left(s"Query param 'q' is not a valid TypedQueryAuto0: failure($failure).")
-            case Right(pureQuery) =>
-              if (pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
-                Left("Query param 'q' is not a valid TypedQueryAuto0: can't accept input params.")
-              else if (pureQuery.find.outputs.length > 1)
-                Left("Query param 'q' is not a valid TypedQueryAuto0: can't accept more than 1 output param.")
-              else
-                Right(TypedQueryAuto0[DatomicData](pureQuery))
-          }
+      case Some(Seq(text)) => 
+        DatomiscaQueryParser.parseTypedQuery0(text)
+
       case Some(seq) => Left(s"Bad value for query param 'q': $seq")
     }
   }
 
-  private def parseQueryUpdate[T](request: Request[T]): Either[String, (TypedQueryAuto0[DatomicData], PartialAddEntity)] =
+  private def parseQueryUpdate[T](request: Request[T]): Either[String, (TypedQuery0[DatomicData], PartialAddEntity)] =
     for {
       q <- (
           request.queryString.get("q") match {
             case None => Left("for streamUpdate, query must in query param 'q'")
 
-            case Some(Seq(text))   =>
-                DatomicParser.parseQuerySafe(text) match {
-                  case Left(failure) => Left(s"Request body is not a valid TypedQueryAuto0: failure($failure).")
-                  case Right(pureQuery) =>
-                    if (pureQuery.in.isDefined && pureQuery.in.get.inputs.length > 0)
-                      Left("Request body is not a valid TypedQueryAuto0: can't accept input params")
-                    else if (pureQuery.find.outputs.length > 1)
-                      Left("Request body is not a valid TypedQueryAuto0: can't accept more than 1 output param")
-                    else
-                      Right(TypedQueryAuto0[DatomicData](pureQuery))
-                }
+            case Some(Seq(text))   => DatomiscaQueryParser.parseTypedQuery0(text)
+
             case Some(seq) => Left(s"Bad value for query param 'q': $seq")
           }
         ).right
