@@ -28,7 +28,7 @@ import play.api.mvc._
 import play.api.libs.json._
 import play.api.libs.functional.syntax._
 import play.api.libs.json.extensions._
-import play.api.libs.iteratee.Enumerator
+import play.api.libs.iteratee.{Enumerator, Done, Input}
 
 import play.modules.reactivemongo.MongoController
 import play.modules.reactivemongo.json.collection.JSONCollection
@@ -119,7 +119,7 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
   override def batchUpdate(sel: JsObject, upd: JsObject)(implicit ctx: ExecutionContext): Future[LastError] = {
     coll.update(
       sel,
-      Json.obj("$set" -> upd),
+      upd,
       multi = true
     )
   }
@@ -222,11 +222,15 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
       }
     }
 
-  private def requestParser[A](reader: Reads[A]): BodyParser[A] =
+  private def requestParser[A](reader: Reads[A], default: A): BodyParser[A] =
     BodyParser("ReactiveMongoAutoSourceController request parser") { request =>
       request.queryString.get("q") match {
         case None =>
-          bodyReader(reader)(request)
+          if (request.contentType.exists(m => m.equalsIgnoreCase("text/json")
+            || m.equalsIgnoreCase("application/json")))
+                bodyReader(reader)(request)
+              else
+                Done(Right(default), Input.Empty)
         case Some(Seq(str)) =>
           parse.empty(request) mapM { _ =>
             try {
@@ -256,7 +260,7 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     }
 
   override def find =
-    getAction.async(requestParser(queryReader)) { request =>
+    getAction.async(requestParser(queryReader, Json.obj())) { request =>
       val query = request.body
       val limit = extractQueryStringInt(request, "limit")
       val skip  = extractQueryStringInt(request, "skip")
@@ -267,7 +271,7 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     }
 
   override def findStream =
-    getAction.async(requestParser(queryReader)) { request =>
+    getAction.async(requestParser(queryReader, Json.obj())) { request =>
       val query    = request.body
       val skip     = extractQueryStringInt(request, "skip")
       val pageSize = extractQueryStringInt(request, "pageSize")
@@ -282,13 +286,13 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
     }
 
   override def batchDelete =
-    deleteAction.async(requestParser(queryReader)) { request =>
+    deleteAction.async(requestParser(queryReader, Json.obj())) { request =>
       val query = request.body
       res.batchDelete(query) map { lasterror => Ok(Json.obj("nb" -> lasterror.updated)) }
     }
 
   override def batchUpdate =
-    updateAction.async(requestParser(batchReader)) { request =>
+    updateAction.async(requestParser(batchReader, Json.obj() -> Json.obj())) { request =>
       val (q, upd) = request.body
       res.batchUpdate(q, upd) map { lasterror => Ok(Json.obj("nb" -> lasterror.updated)) }
     }
