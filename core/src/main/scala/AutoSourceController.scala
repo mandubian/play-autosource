@@ -17,30 +17,43 @@ package play.autosource.core
 
 import scala.concurrent._
 
+import play.api.Play
 import play.api.mvc._
 import play.core.Router
 import play.api.libs.iteratee.Enumerator
 
 /**
   * AutoSource controller defining all basic CRUD actions
-  * The only parameterized type is the Id of records
+  * Id is the entity identifier type
+  * A is the type input data parsed by Action's body parser
   */
 trait AutoSourceController[Id] extends Controller {
-  /**
-    */
-  def insert: EssentialAction
+  def insert:                  EssentialAction
+  def get(id: Id):             EssentialAction
+  def delete(id: Id):          EssentialAction
+  def update(id: Id):          EssentialAction
+  def updatePartial(id: Id):   EssentialAction
 
-  def get(id: Id): EssentialAction
-  def delete(id: Id): EssentialAction
-  def update(id: Id): EssentialAction
-  def updatePartial(id: Id): EssentialAction
+  def find:                    EssentialAction
+  def findStream:              EssentialAction
 
-  def find: EssentialAction
-  def findStream: EssentialAction
+  def batchInsert:             EssentialAction
+  def batchDelete:             EssentialAction
+  def batchUpdate:             EssentialAction
 
-  def batchInsert: EssentialAction
-  def batchDelete: EssentialAction
-  def batchUpdate: EssentialAction
+  /** Provides Hooks based on ActionBuilder */
+  protected def defaultAction: ActionBuilder[Request] = Action
+  protected def getAction:     ActionBuilder[Request] = defaultAction
+  protected def insertAction:  ActionBuilder[Request] = defaultAction
+  protected def updateAction:  ActionBuilder[Request] = defaultAction
+  protected def deleteAction:  ActionBuilder[Request] = defaultAction
+
+  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
+    Play.maybeApplication map { app =>
+      app.global.onBadRequest(request, error)
+    } getOrElse {
+      Future.successful(BadRequest)
+    }
 }
 
 /**
@@ -50,7 +63,7 @@ trait AutoSourceController[Id] extends Controller {
   */
 abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[Id])
   extends Router.Routes
-  with AutoSourceController[Id] {
+  with    AutoSourceController[Id] {
 
   private var path: String = ""
 
@@ -71,7 +84,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
   def prefix = path
   def documentation = Nil
   def routes = new scala.runtime.AbstractPartialFunction[RequestHeader, Handler] {
-    override def applyOrElse[A <: RequestHeader, B >: Handler](rh: A, default: A => B) = {
+    override def applyOrElse[RH <: RequestHeader, H >: Handler](rh: RH, default: RH => H) = {
       if (rh.path.startsWith(path)) {
         (rh.method, rh.path.drop(path.length)) match {
           case ("GET",    Stream())    => findStream
@@ -80,7 +93,9 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
 
           case ("PUT",    Batch())     => batchUpdate
           case ("PUT",    Partial(id)) => withId(id, updatePartial)
+          case ("PATCH",  Partial(id)) => withId(id, updatePartial)
           case ("PUT",    Id(id))      => withId(id, update)
+          case ("PATCH",  Id(id))      => withId(id, update)
 
           case ("POST",   Batch())     => batchInsert
           case ("POST",   Find())      => find
@@ -100,6 +115,7 @@ abstract class AutoSourceRouterContoller[Id](implicit idBindable: PathBindable[I
         (rh.method, rh.path.drop(path.length)) match {
           case ("GET",    Stream()   | Id(_)      | Slash()) => true
           case ("PUT",    Batch()    | Partial(_) | Id(_))   => true
+          case ("PATCH",  Partial(_) | Id(_))                => true
           case ("POST",   Batch()    | Slash())              => true
           case ("DELETE", Batch()    | Id(_))                => true
           case _ => false

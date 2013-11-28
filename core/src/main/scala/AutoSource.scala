@@ -13,7 +13,8 @@
   * See the License for the specific language governing permissions and
   * limitations under the License.
   */
-package play.autosource.core
+package play.autosource
+package core
 
 import scala.concurrent._
 import play.api.libs.iteratee.Enumerator
@@ -26,7 +27,7 @@ import play.api.libs.iteratee.Enumerator
   * - Query: the type to be used for all queries and selectors for batch operations
   * - Update: the type to be used for all partial or batch updates
   */
-trait AutoSource[T, Id, Query, Update] {
+trait AutoSource[T, Id, Query, Update, BatchReturn] {
   /** Inserts a record and returns Id
     *
     * @param t the record to be stored
@@ -105,7 +106,7 @@ trait AutoSource[T, Id, Query, Update] {
     * @return the future number of inserted records Id.
               if there are any DB error, it should be encapsulated in a Future.failed(Exception).
     */
-  def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int]
+  def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[BatchReturn]
 
   /** Deletes a batch of records using a query Selector
     *
@@ -113,7 +114,7 @@ trait AutoSource[T, Id, Query, Update] {
     * @param ctx the execution context used to execute the async action
     * @return if there are any DB error, it should be encapsulated in a Future.failed(Exception).
     */
-  def batchDelete(sel: Query)(implicit ctx: ExecutionContext): Future[Unit]
+  def batchDelete(sel: Query)(implicit ctx: ExecutionContext): Future[BatchReturn]
 
   /** Updates a batch of records using a query Selector and an update Descriptor
     *
@@ -122,5 +123,5 @@ trait AutoSource[T, Id, Query, Update] {
     * @param ctx the execution context used to execute the async action
     * @return if there are any DB error, it should be encapsulated in a Future.failed(Exception).
     */
-  def batchUpdate(sel: Query, upd: Update)(implicit ctx: ExecutionContext): Future[Unit]
+  def batchUpdate(sel: Query, upd: Update)(implicit ctx: ExecutionContext): Future[BatchReturn]
 }

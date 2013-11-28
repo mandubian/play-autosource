@@ -20,7 +20,7 @@ import scala.concurrent.ExecutionContext.Implicits.global
 import play.api.Play.current
 
 object Application0 extends ReactiveMongoAutoSourceController[JsObject] {
-  lazy val coll = db.collection[JSONCollection]("persons")
+  def coll = db.collection[JSONCollection]("persons")
 
   def index = Action {
     Ok(views.html.index("ok"))
@@ -28,8 +28,7 @@ object Application0 extends ReactiveMongoAutoSourceController[JsObject] {
 }
 
 object Application1 extends ReactiveMongoAutoSourceController[JsObject] {
-
-  lazy val coll = db.collection[JSONCollection]("persons")
+  def coll = db.collection[JSONCollection]("persons")
 
   override val reader = __.read[JsObject] keepAnd (
     (__ \ "name").read[String] and
@@ -43,8 +42,7 @@ object Person{
 }
 
 object Application2 extends ReactiveMongoAutoSourceController[Person] {
-
-  lazy val coll = db.collection[JSONCollection]("persons")
+  def coll = db.collection[JSONCollection]("persons")
 
   def index = Action {
     Ok(views.html.index("ok"))
@@ -57,29 +55,53 @@ object User {
 }
 
 object Application3 extends ReactiveMongoAutoSourceController[Person] {
-  def Authenticated(action: User => EssentialAction): EssentialAction = {
-    // Let's define a helper function to retrieve a User
+  case class AuthenticatedUserRequest[A](
+    user: User,
+    request:  Request[A]
+  ) extends WrappedRequest[A](request)
+
+  object Authenticated extends ActionBuilder[AuthenticatedUserRequest] {
     def getUser(request: RequestHeader): Option[User] = {
       request.session.get("user").flatMap(u => User.find(u))
     }
 
-    // Now let's define the new Action
-    EssentialAction { request =>
-      getUser(request).map(u => action(u)(request)).getOrElse {
-        Done(Unauthorized)
+    def invokeBlock[A](request: Request[A], block: AuthenticatedUserRequest[A] => Future[SimpleResult]): Future[SimpleResult] = {
+      getUser(request) match {
+        case Some(user)  => block(AuthenticatedUserRequest(user, request))
+        case None        => Future.successful(Unauthorized)
       }
     }
   }
 
-  lazy val coll = db.collection[JSONCollection]("persons")
+  def coll = db.collection[JSONCollection]("persons")
 
-  override def delete(id: BSONObjectID) = Authenticated { _ =>
-    super.delete(id)
+  override val deleteAction = Authenticated.asInstanceOf[ActionBuilder[Request]]
+
+  /*override def delete(id: BSONObjectID) = {
+    val action = super.delete(id).asInstanceOf[Action[AnyContent]]
+    Authenticated.async(request => action(request))
+  }*/
+
+  override val insertAction = new ActionBuilder[Request]{
+    def invokeBlock[A](request: Request[A], block: Request[A] => Future[SimpleResult]) = {
+      play.Logger.info(s"Before Insert Action")
+      block(request).map{ a =>
+        play.Logger.info(s"After Insert Action")
+        a
+      }
+    }
   }
 
-  override def get(id: BSONObjectID) = Authenticated { _ =>
-    super.get(id)
-  }
+  override val getAction = Authenticated.asInstanceOf[ActionBuilder[Request]] 
+  /*new ActionBuilder[Request]{
+    def invokeBlock[A](request: Request[A], block: Request[A] => Future[SimpleResult]) = {
+      play.Logger.info(s"Before Get Action")
+      block(request).map{ a =>
+        play.Logger.info(s"After Get Action")
+        a
+      }
+    }
+  }*/
 
   def index = Action {
     Ok(views.html.index("ok"))
@@ -93,3 +115,4 @@ object Application3 extends ReactiveMongoAutoSourceController[Person] {
     Ok("logged out").withNewSession
   }
 }
+

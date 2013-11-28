@@ -15,22 +15,25 @@
   */
 package play.autosource.reactivemongo
 
-import scala.concurrent._
+import play.autosource.core._
 
-import reactivemongo.bson._
-import reactivemongo.api._
+import scala.concurrent.{ExecutionContext, Future}
 
+import reactivemongo.bson.BSONObjectID
+import reactivemongo.api.QueryOpts
+import reactivemongo.core.commands.LastError
+
+import play.api.Play
 import play.api.mvc._
 import play.api.libs.json._
-import play.api.libs.json.syntax._
 import play.api.libs.functional.syntax._
 import play.api.libs.json.extensions._
-import play.api.libs.iteratee.Enumerator
+import play.api.libs.iteratee.{Enumerator, Done, Input}
+
 import play.modules.reactivemongo.MongoController
-import play.modules.reactivemongo.json.collection._
+import play.modules.reactivemongo.json.collection.JSONCollection
 import play.modules.reactivemongo.json.BSONFormats._
 
-import play.autosource.core._
 
 object `package` {
   implicit def BSONObjectIdBindable(implicit stringBinder: PathBindable[String]) =
@@ -47,8 +50,8 @@ object `package` {
     }
 }
 
-class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T]) extends AutoSource[T, BSONObjectID, JsObject, JsObject] {
-  def insert(t: T)(implicit ctx: ExecutionContext): Future[BSONObjectID] = {
+class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T]) extends AutoSource[T, BSONObjectID, JsObject, JsObject, LastError] {
+  override def insert(t: T)(implicit ctx: ExecutionContext): Future[BSONObjectID] = {
     val id = BSONObjectID.generate
     val obj = format.writes(t).as[JsObject]
     obj \ "_id" match {
@@ -60,29 +63,29 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
     }
   }
 
-  def get(id: BSONObjectID)(implicit ctx: ExecutionContext): Future[Option[(T, BSONObjectID)]] = {
+  override def get(id: BSONObjectID)(implicit ctx: ExecutionContext): Future[Option[(T, BSONObjectID)]] = {
     coll.find(Json.obj("_id" -> id)).cursor[JsObject].headOption.map(_.map( js => (js.as[T], id)))
   }
 
-  def delete(id: BSONObjectID)(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def delete(id: BSONObjectID)(implicit ctx: ExecutionContext): Future[Unit] = {
     coll.remove(Json.obj("_id" -> id)).map( _ => () )
   }
 
-  def update(id: BSONObjectID, t: T)(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def update(id: BSONObjectID, t: T)(implicit ctx: ExecutionContext): Future[Unit] = {
     coll.update(
       Json.obj("_id" -> id),
       Json.obj("$set" -> t)
     ).map{ _ => () }
   }
 
-  def updatePartial(id: BSONObjectID, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def updatePartial(id: BSONObjectID, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
     coll.update(
       Json.obj("_id" -> id),
       Json.obj("$set" -> upd)
     ).map{ _ => () }
   }
 
-  def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[Int] = {
+  override def batchInsert(elems: Enumerator[T])(implicit ctx: ExecutionContext): Future[LastError] = {
     val enum = elems.map{ t =>
       val id = BSONObjectID.generate
       val obj = format.writes(t).as[JsObject]
@@ -92,31 +95,33 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
       }
     }
 
-    coll.bulkInsert(enum)
+    coll.bulkInsert(enum) map { nb => 
+      LastError(true, None, None, None, None, 1, false)
+    }
   }
 
-  def find(sel: JsObject, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Traversable[(T, BSONObjectID)]] = {
+  override def find(sel: JsObject, limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Traversable[(T, BSONObjectID)]] = {
     val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
     val l = if(limit!=0) cursor.collect[Traversable](limit) else cursor.collect[Traversable]()
     l.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
   }
 
-  def findStream(sel: JsObject, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, BSONObjectID)]] = {
+  override def findStream(sel: JsObject, skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, BSONObjectID)]] = {
     val cursor = coll.find(sel).options(QueryOpts().skip(skip)).cursor[JsObject]
     val enum = if(pageSize !=0) cursor.enumerateBulks(pageSize) else cursor.enumerateBulks()
     enum.map(_.map( js => (js.as[T], (js \ "_id").as[BSONObjectID])))
   }
 
-  def batchDelete(sel: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
-    coll.remove(sel).map( _ => () )
+  override def batchDelete(sel: JsObject)(implicit ctx: ExecutionContext): Future[LastError] = {
+    coll.remove(sel)
   }
 
-  def batchUpdate(sel: JsObject, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
+  override def batchUpdate(sel: JsObject, upd: JsObject)(implicit ctx: ExecutionContext): Future[LastError] = {
     coll.update(
       sel,
-      Json.obj("$set" -> upd),
+      upd,
       multi = true
-    ).map{ _ => () }
+    )
   }
 
 }
@@ -127,142 +132,170 @@ abstract class ReactiveMongoAutoSourceController[T](implicit ctx: ExecutionConte
 
   def coll: JSONCollection
 
-  lazy val res = new ReactiveMongoAutoSource[T](coll)
+  /** Override this to customize how JsErrors are reported.
+    * The implementation should call onBadRequest
+    */
+  protected def onJsError(request: RequestHeader)(jsError: JsError): Future[SimpleResult] =
+    onBadRequest(request, JsError.toFlatJson(jsError).toString)
 
-  val queryReader: Reads[JsObject] = implicitly[Reads[JsObject]]
-  val updateReader: Reads[JsObject] = implicitly[Reads[JsObject]]
-  val batchReader: Reads[(JsObject, JsObject)] = (
+
+  /** Override to customize deserialization and add validation. */
+  protected val reader: Reads[T]  = format
+  /** Override to customize serialization. */
+  protected val writer: Writes[T] = format
+
+  lazy val res = new ReactiveMongoAutoSource[T](coll)(Format(reader, writer))
+
+  /** Override to cutomize deserialization of queries. */
+  protected val queryReader: Reads[JsObject] = implicitly[Reads[JsObject]]
+
+  /** Override to cutomize deserialization of updates. */
+  protected val updateReader: Reads[JsObject] = implicitly[Reads[JsObject]]
+
+  /** Override to cutomize deserialization of queries and batch updates. */
+  protected val batchReader: Reads[(JsObject, JsObject)] = (
     (__ \ "query").read(queryReader) and
     (__ \ "update").read(updateReader)
   ).tupled
 
-  val limitReader: Reads[Int] = (__ \ "limit").read[Int]
-  val pageSizeReader: Reads[Int] = (__ \ "pageSize").read[Int]
-  val skipReader: Reads[Int] = (__ \ "skip").read[Int]
 
-  implicit val writerWithId = Writes[(T, BSONObjectID)] {
+  private implicit val writerWithId = Writes[(T, BSONObjectID)] {
     case (t, id) =>
-      val ser = format.writes(t).as[JsObject].updateAllKeyNodes{
+      val ser = writer.writes(t).as[JsObject].updateAllKeyNodes{
         case ( _ \ "_id", value ) => ("id" -> value \ "$oid")
       }
       if((__ \ "id")(ser).isEmpty) ser.as[JsObject] ++ Json.obj("id" -> id.stringify)
       else ser
   }
-  val idWriter = Writes[BSONObjectID] { id =>
+  private implicit val idWriter = Writes[BSONObjectID] { id =>
     Json.obj("id" -> id.stringify)
   }
 
-  def insert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body).map{ t =>
-      Async{
-        res.insert(t).map{ id => Ok(Json.toJson(id)(idWriter)) }
+  private def bodyReader[A](reader: Reads[A]): BodyParser[A] =
+    BodyParser("ReactiveMongoAutoSourceController body reader") { request =>
+      parse.json(request) mapM {
+        case Right(jsValue) =>
+          jsValue.validate(reader) map { a =>
+            Future.successful(Right(a))
+          } recoverTotal { jsError =>
+            onJsError(request)(jsError) map Left.apply
+          }
+        case left_simpleResult =>
+          Future.successful(left_simpleResult.asInstanceOf[Either[SimpleResult, A]])
       }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+    }
 
-  def get(id: BSONObjectID): EssentialAction = Action{
-    Async{
-      res.get(id).map{
-        case None    => NotFound(s"ID ${id.stringify} not found")
+  override def insert =
+    insertAction.async(bodyReader(reader)) { request =>
+      res.insert(request.body) map { id =>
+        Ok(Json.toJson(id))
+      }
+    }
+
+  override def get(id: BSONObjectID) =
+    getAction.async {
+      res.get(id) map {
+        case None      => NotFound(s"ID ${id.stringify} not found")
         case Some(tid) => Ok(Json.toJson(tid))
       }
     }
-  }
 
-  def delete(id: BSONObjectID): EssentialAction = Action{
-    Async{
-      res.delete(id).map{ le => Ok(Json.toJson(id)(idWriter)) }
+  override def delete(id: BSONObjectID) =
+    deleteAction.async {
+      res.delete(id) map { _ => Ok(Json.toJson(id)) }
     }
-  }
 
-  def update(id: BSONObjectID): EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[T](request.body).map{ t =>
-      Async{
-        res.update(id, t).map{ _ => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
-
-  def updatePartial(id: BSONObjectID): EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[JsObject](request.body)(updateReader).map{ upd =>
-      Async{
-        res.updatePartial(id, upd).map{ _ => Ok(Json.toJson(id)(idWriter)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
-
-  def batchInsert: EssentialAction = Action(parse.json){ request =>
-    Json.fromJson[Seq[T]](request.body).map{ elems =>
-      Async{
-        res.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
-      }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
-
-  private def parseQuery[T](request: Request[T]): JsValue = {
-    request.queryString.get("q") match {
-      case None =>
-        request.body match {
-          case AnyContentAsJson(json) => json
-          case AnyContentAsEmpty => Json.obj()
-          case _ => throw new RuntimeException("Body in Request isn't Json")
-        }
-
-      case Some(q)   =>
-        q.headOption.map{ str =>
-          try {
-            Json.parse(str)
-          } catch { case e: Throwable => throw new RuntimeException("queryparam 'q' isn't Json") }
-        }.getOrElse(Json.obj())
+  override def update(id: BSONObjectID) =
+    updateAction.async(bodyReader(reader)) { request =>
+      res.update(id, request.body) map { _ => Ok(Json.toJson(id)) }
     }
-  }
 
-  def find: EssentialAction = Action{ request =>
-    val json: JsValue = parseQuery(request)
-    val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
+  override def updatePartial(id: BSONObjectID) =
+    updateAction.async(bodyReader(updateReader)) { request =>
+      res.updatePartial(id, request.body) map { _ => Ok(Json.toJson(id)) }
+    }
 
-    Json.fromJson[JsObject](json)(queryReader).map{ js =>
-      Async{
-        res.find(js, limit, skip).map{ s =>
-          Ok(Json.toJson(s))
-        }
+  override def batchInsert =
+    insertAction.async(bodyReader(Reads.seq(reader))) { request =>
+      res.batchInsert(Enumerator.enumerate(request.body)) map { lasterror =>
+        Ok(Json.obj("nb" -> lasterror.updated))
       }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+    }
 
-  def findStream: EssentialAction = Action { request =>
-    val json: JsValue = parseQuery(request)
-    val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-    val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-
-    Json.fromJson[JsObject](json)(queryReader).map{ js =>
-      Ok.stream(
-        res.findStream(js, skip, pageSize)
-           .map( it => Json.toJson(it.toTraversable) )
-           .andThen(Enumerator.eof)
-      )
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
-
-  def batchDelete: EssentialAction = Action{ request =>
-    val json: JsValue = parseQuery(request)
-    Json.fromJson[JsObject](json)(queryReader).map{ js =>
-      Async {
-        res.batchDelete(js).map{ _ => Ok("deleted") }
+  private def requestParser[A](reader: Reads[A], default: A): BodyParser[A] =
+    BodyParser("ReactiveMongoAutoSourceController request parser") { request =>
+      request.queryString.get("q") match {
+        case None =>
+          if (request.contentType.exists(m => m.equalsIgnoreCase("text/json")
+            || m.equalsIgnoreCase("application/json")))
+                bodyReader(reader)(request)
+              else
+                Done(Right(default), Input.Empty)
+        case Some(Seq(str)) =>
+          parse.empty(request) mapM { _ =>
+            try {
+              Json.parse(str).validate(reader) map { a =>
+                Future.successful(Right(a))
+              } recoverTotal { jsError =>
+                onJsError(request)(jsError) map Left.apply
+              }
+            } catch {
+              // catch exceptions from Json.parse
+              case ex: java.io.IOException =>
+                onBadRequest(request, "Expecting Json value for query parameter 'q'!") map Left.apply
+            }
+          }
+        case Some(seq) =>
+          parse.empty(request) mapM { _ =>
+            onBadRequest(request, "Expecting single value for query parameter 'q'!") map Left.apply
+          }
       }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+    }
 
-  def batchUpdate: EssentialAction = Action{ request =>
-    val json: JsValue = parseQuery(request)
-    Json.fromJson[(JsObject, JsObject)](json)(batchReader).map{
-      case (q, upd) => Async {
-        println(s"q:$q upd:$upd")
-        res.batchUpdate(q, upd).map{ _ => Ok("updated") }
+  private def extractQueryStringInt(request: RequestHeader, param: String): Int =
+    request.queryString.get(param) match {
+      case Some(Seq(str)) =>
+        try { str.toInt } catch { case ex: NumberFormatException => 0 }
+      case _ => 0
+    }
+
+  override def find =
+    getAction.async(requestParser(queryReader, Json.obj())) { request =>
+      val query = request.body
+      val limit = extractQueryStringInt(request, "limit")
+      val skip  = extractQueryStringInt(request, "skip")
+
+      res.find(query, limit, skip) map { s =>
+        Ok(Json.toJson(s))
       }
-    }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
-  }
+    }
+
+  override def findStream =
+    getAction.async(requestParser(queryReader, Json.obj())) { request =>
+      val query    = request.body
+      val skip     = extractQueryStringInt(request, "skip")
+      val pageSize = extractQueryStringInt(request, "pageSize")
+
+      Future.successful {
+        Ok.chunked(
+          res.findStream(query, skip, pageSize)
+             .map( it => Json.toJson(it.toTraversable) )
+             .andThen(Enumerator.eof)
+        )
+      }
+    }
+
+  override def batchDelete =
+    deleteAction.async(requestParser(queryReader, Json.obj())) { request =>
+      val query = request.body
+      res.batchDelete(query) map { lasterror => Ok(Json.obj("nb" -> lasterror.updated)) }
+    }
+
+  override def batchUpdate =
+    updateAction.async(requestParser(batchReader, Json.obj() -> Json.obj())) { request =>
+      val (q, upd) = request.body
+      res.batchUpdate(q, upd) map { lasterror => Ok(Json.obj("nb" -> lasterror.updated)) }
+    }
 
 }
 
