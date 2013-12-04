@@ -346,7 +346,7 @@ var app =
   // creates the Person factory backed by our autosource
   // Please remark the url person/:id which will use transparently our CRUD AutoSource endpoints
   .factory('Person', ["$resource", function($resource){
-    return $resource('person/:id', { "id" : "@id" });
+    return $resource('person/:id', { "id" : "@id" }, { update: { method: 'PUT' }});
   }])
   // creates a controller
   .controller("PersonCtrl", ["$scope", "Person", function($scope, Person) {
@@ -374,7 +374,7 @@ var app =
 
     // updates a person and refreshes list
     $scope.update = function(person) {
-      person.$save(function() {
+      person.$update(function() {
         $scope.persons = Person.query();
       })
     }
