@@ -396,21 +396,21 @@ Now let's create our CRUD UI page using angular directives. We need to be able t
 
     <div ng-controller="PersonCtrl">
       <!-- create form -->
-      <label for="name">name:</label><input ng-model="createForm.name"/>
-      <label for="age">age:</label><input ng-model="createForm.age" type="number"/>
+      <label for="name">name:</label><input id="name" ng-model="createForm.name"/>
+      <label for="age">age:</label><input id="age" ng-model="createForm.age" type="number"/>
       <button ng-click="create()">Create new person</button>
       <hr/>
       <!-- List of persons with update/delete buttons -->
       <table>
       <thead><th>name</th><th>age</th><td>actions</td></thead>
-      <tbody ng-repeat="person in persons">
-        <tr>
+      <tbody>
+        <tr ng-repeat="person in persons">
           <td><input ng-model="person.name"/></td>
           <td><input type="number" ng-model="person.age"/></td>
           <td><button ng-click="update(person)">Update</button><button ng-click="remove(person)">Delete</button></td>
         </tr>
       </tbody>
-      </div>
+      </table>
     </div>
 
 }
