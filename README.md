@@ -504,6 +504,12 @@ object Persons extends ReactiveMongoAutoSourceController[Person] {
 }
 ```
 
+Now, you can add routes to handle login and logout actions
+```scala
+POST    /login/:name                controllers.Persons.login(name: String)
+POST    /logout                     controllers.Persons.logout
+```
+
 Nothing to complicated here.
 If you need to add headers in your responses and params to querystring, it's easy to wrap autosource actions. Please refer to Play Framework doc for more info...
 
