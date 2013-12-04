@@ -346,7 +346,7 @@ var app =
   // creates the Person factory backed by our autosource
   // Please remark the url person/:id which will use transparently our CRUD AutoSource endpoints
   .factory('Person', ["$resource", function($resource){
-    return $resource('person/:id', { "id" : "@id" });
+    return $resource('person/:id', { "id" : "@id" }, { update: { method: 'PUT' }});
   }])
   // creates a controller
   .controller("PersonCtrl", ["$scope", "Person", function($scope, Person) {
@@ -374,7 +374,7 @@ var app =
 
     // updates a person and refreshes list
     $scope.update = function(person) {
-      person.$save(function() {
+      person.$update(function() {
         $scope.persons = Person.query();
       })
     }
@@ -426,7 +426,7 @@ We need to import angularjs in our application and create angular application us
 <!DOCTYPE html>
 
 <!-- please note the directive ng-app to initialize angular app-->
-<html ng-app="html">
+<html ng-app="app">
     <head>
         <title>@title</title>
         <link rel="stylesheet" media="screen" href="@routes.Assets.at("stylesheets/main.css")">
@@ -454,6 +454,9 @@ Autosource is by default not secured in any way and actually I don't really care
 Anyway, I'm a nice boy and I'm going to show you how you could secure the `DELETE` endpoint using the authentication action composition sample given in [Play Framework documentation](http://www.playframework.com/documentation/2.1.1/ScalaActionsComposition).
 
 ```scala
+import play.api.libs.iteratee.Done
+import reactivemongo.bson.BSONObjectID
+
 // FAKE USER class to simulate a user extracted from DB.
 case class User(name: String)
 object User {
@@ -499,6 +502,12 @@ object Persons extends ReactiveMongoAutoSourceController[Person] {
     Ok("logged out").withNewSession
   }
 }
+```
+
+Now, you can add routes to handle login and logout actions
+```scala
+POST    /login/:name                controllers.Persons.login(name: String)
+POST    /logout                     controllers.Persons.logout
 ```
 
 Nothing to complicated here.
