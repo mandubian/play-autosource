@@ -454,6 +454,9 @@ Autosource is by default not secured in any way and actually I don't really care
 Anyway, I'm a nice boy and I'm going to show you how you could secure the `DELETE` endpoint using the authentication action composition sample given in [Play Framework documentation](http://www.playframework.com/documentation/2.1.1/ScalaActionsComposition).
 
 ```scala
+import play.api.libs.iteratee.Done
+import reactivemongo.bson.BSONObjectID
+
 // FAKE USER class to simulate a user extracted from DB.
 case class User(name: String)
 object User {
