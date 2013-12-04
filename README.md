@@ -426,7 +426,7 @@ We need to import angularjs in our application and create angular application us
 <!DOCTYPE html>
 
 <!-- please note the directive ng-app to initialize angular app-->
-<html ng-app="html">
+<html ng-app="app">
     <head>
         <title>@title</title>
         <link rel="stylesheet" media="screen" href="@routes.Assets.at("stylesheets/main.css")">
