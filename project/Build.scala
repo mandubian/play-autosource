@@ -34,8 +34,8 @@ object ApplicationBuild extends Build {
     core,
     reactivemongo,
     datomisca,
-    couchbase
-    /*slick*/
+    couchbase,
+    slick
   )
 
   lazy val core = Project(
@@ -98,19 +98,17 @@ object ApplicationBuild extends Build {
       version := "2.0-SNAPSHOT",
 
       resolvers ++= Seq(
-        "ReactiveCouchbase Snapshots" at "https://raw.github.com/ReactiveCouchbase/repository/master/snapshots/"
+        "Ancelin Repository" at "https://raw.github.com/mathieuancelin/play2-couchbase/master/repository/snapshots",
+        "Spy Repository" at "http://files.couchbase.com/maven2"
       ),
       libraryDependencies ++= Seq(
-        "org.reactivecouchbase" %% "reactivecouchbase-core" % "0.2-SNAPSHOT",
-        "org.reactivecouchbase" %% "reactivecouchbase-play" % "0.2-SNAPSHOT",
-        "com.typesafe.play"     %% "play"                   % "2.2.1"         % "provided",
-        "com.typesafe.play"     %% "play-cache"             % "2.2.0"         % "provided"
+        "org.ancelin.play2.couchbase" %% "play2-couchbase"   % "0.5-SNAPSHOT",
+        "com.typesafe.play"           %% "play"              % "2.2.1"        % "provided",
+        "com.typesafe.play"           %% "play-cache"        % "2.2.1"        % "provided"
       )
     )
   ) dependsOn(core)
 
-
- /*
   lazy val slick = Project(
     id = "slick",
     base = file("slick"),
@@ -131,7 +129,6 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-*/  
 
   object Publish {
     lazy val settings = Seq(
