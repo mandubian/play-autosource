@@ -111,16 +111,16 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
   }
 
   override def batchDelete(sel: TypedQuery0[Any])(implicit ctx: ExecutionContext): Future[Int] = {
-    val txData = Datomic.q(sel, conn.database).map{
+    val txData = Datomic.q(sel, conn.database).iterator map {
       case id: Long => Entity.retract(id)
-    }.toSeq
+    }
     Datomic.transact(txData).map( _ => txData.length )
   }
 
   override def batchUpdate(sel: TypedQuery0[Any], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Int] = {
-    val txData = Datomic.q(sel, conn.database).map{
+    val txData = Datomic.q(sel, conn.database).iterator map {
       case id: Long => Entity.add(DId(id), upd)
-    }.toSeq
+    }
     Datomic.transact(txData).map( _ => txData.length )
   }
 
