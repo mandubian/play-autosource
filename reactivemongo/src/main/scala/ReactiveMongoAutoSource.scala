@@ -59,7 +59,13 @@ class ReactiveMongoAutoSource[T](coll: JSONCollection)(implicit format: Format[T
         coll.insert(obj ++ Json.obj("_id" -> id))
             .map{ _ => id }
 
-      case _ => coll.insert(obj).map{ _ => id }
+      case JsObject(Seq((_, JsString(oid)))) =>
+        coll.insert(obj).map{ _ => BSONObjectID(oid) }
+
+      case JsString(oid) =>
+        coll.insert(obj).map{ _ => BSONObjectID(oid) }
+      
+      case f => sys.error(s"Could not parse _id field: $f")
     }
   }
 
