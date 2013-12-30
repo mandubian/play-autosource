@@ -437,7 +437,7 @@ We need to import angularjs in our application and create angular application us
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.1.5/angular.min.js"></script>
         <script src="https://ajax.googleapis.com/ajax/libs/angularjs/1.1.5/angular-resource.min.js"></script>
 
-        <script src="@routes.Assets.at("javascripts/person.js")" type="text/javascript"></script>
+        <script src="@routes.Assets.at("javascripts/persons.js")" type="text/javascript"></script>
     </head>
     <body>
         @content
