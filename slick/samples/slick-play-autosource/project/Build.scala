@@ -26,7 +26,7 @@ object ApplicationBuild extends Build {
 
       // NOTE: there is no repo for slick-autosource yet, 
       // you should build it locally and have it on your local repo
-      "play-autosource"     %%  "slick"               % "1.1-SNAPSHOT" changing(),
+      "play-autosource"     %%  "slick"               % "2.0-SNAPSHOT" changing(),
       "com.h2database"      %   "h2"                  % "1.3.173"
     )
   )
