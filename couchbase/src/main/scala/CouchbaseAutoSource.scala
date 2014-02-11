@@ -20,8 +20,6 @@ import play.autosource.core.{AutoSourceRouterContoller, AutoSource}
 import scala.concurrent.{Future, ExecutionContext}
 import play.api.libs.iteratee.{Iteratee, Enumerator}
 
-import org.ancelin.play2.couchbase.{CouchbaseRWImplicits, CouchbaseBucket}
-import org.ancelin.play2.couchbase.crud.QueryObject
 import com.couchbase.client.protocol.views.{Query, View}
 
 import java.util.UUID
@@ -29,15 +27,14 @@ import play.api.mvc._
 import play.api.libs.json.JsUndefined
 import play.api.libs.json.JsObject
 import scala.collection.TraversableOnce
+import org.reactivecouchbase.{CouchbaseRWImplicits, CouchbaseBucket}
+import org.reactivecouchbase.play.crud.QueryObject
 
-class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_id") extends AutoSource[T, String, (View, Query), JsObject] {
-
-  val reader: Reads[T] = implicitly[Reads[T]]
-  val writer: Writes[T] = implicitly[Writes[T]]
+class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_id", val format: Format[T]) extends AutoSource[T, String, (View, Query), JsObject, Int] {
 
   def insert(t: T)(implicit ctx: ExecutionContext): Future[String] = {
     val id: String = UUID.randomUUID().toString
-    val json = writer.writes(t).as[JsObject]
+    val json = format.writes(t).as[JsObject]
     json \ idKey match {
       case _:JsUndefined => {
         val newJson = json ++ Json.obj(idKey -> JsString(id))
@@ -51,7 +48,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
   }
 
   def get(id: String)(implicit ctx: ExecutionContext): Future[Option[(T, String)]] = {
-    bucket.get[T]( id )(reader, ctx).map( _.map( v => ( v, id ) ) )(ctx)
+    bucket.get[T]( id )(format, ctx).map( _.map( v => ( v, id ) ) )(ctx)
   }
 
   def delete(id: String)(implicit ctx: ExecutionContext): Future[Unit] = {
@@ -59,13 +56,13 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
   }
 
   def update(id: String, t: T)(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.replace(id, t)(writer, ctx).map(_ => ())
+    bucket.replace(id, t)(format, ctx).map(_ => ())
   }
 
   def updatePartial(id: String, upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
     get(id)(ctx).flatMap { opt =>
       opt.map { t =>
-        val json = Json.toJson(t._1)(writer).as[JsObject]
+        val json = Json.toJson(t._1)(format).as[JsObject]
         val newJson = json.deepMerge(upd)
         bucket.replace((json \ idKey).as[JsString].value, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
       }.getOrElse(throw new RuntimeException(s"Cannot find ID $id"))
@@ -82,7 +79,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
     if (skip != 0) query = query.setSkip(skip)
     bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { l =>
       l.map { i => 
-        val t = reader.reads(i.document) match {
+        val t = format.reads(i.document) match {
           case e:JsError => throw new RuntimeException("Document does not match object")
           case s:JsSuccess[T] => s.get
         }
@@ -100,7 +97,7 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
     val futureEnumerator: Future[Enumerator[TraversableOnce[(T, String)]]] = bucket.search[JsObject](sel._1)(query)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { l =>
       val size = if(pageSize != 0) pageSize else l.size
       Enumerator.enumerate(l.map { i => 
-          val t = reader.reads(i.document) match {
+          val t = format.reads(i.document) match {
             case e:JsError => throw new RuntimeException("Document does not match object")
             case s:JsSuccess[T] => s.get
           }
@@ -114,21 +111,25 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
     Enumerator.flatten(futureEnumerator)
   }
 
-  def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.search[JsObject](sel._1)(sel._2)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).map { list =>
-      list.map { t =>
-        delete(t.id.get)(ctx)
-      }
+  def batchDelete(sel: (View, Query))(implicit ctx: ExecutionContext): Future[Int] = {
+    bucket.search[JsObject](sel._1)(sel._2)(CouchbaseRWImplicits.documentAsJsObjectReader, ctx).toList(ctx).flatMap { list =>
+      Future.sequence(list.map { t =>
+        delete(t.id.get)(ctx).map(_ => 1).recover {
+          case _ => 0
+        }
+      }).map(l => l.foldRight(0)(_ + _))
     }
   }
 
-  def batchUpdate(sel: (View, Query), upd: JsObject)(implicit ctx: ExecutionContext): Future[Unit] = {
-    bucket.search[T](sel._1)(sel._2)(reader, ctx).toList(ctx).map { list =>
-      list.map { t =>
-        val json = Json.toJson(t.document)(writer).as[JsObject]
+  def batchUpdate(sel: (View, Query), upd: JsObject)(implicit ctx: ExecutionContext): Future[Int] = {
+    bucket.search[T](sel._1)(sel._2)(format, ctx).toList(ctx).flatMap { list =>
+      Future.sequence(list.map { t =>
+        val json = Json.toJson(t.document)(format).as[JsObject]
         val newJson = json.deepMerge(upd)
-        bucket.replace(t.id.get, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => ())
-      }
+        bucket.replace(t.id.get, newJson)(CouchbaseRWImplicits.jsObjectToDocumentWriter, ctx).map(_ => 1).recover {
+          case _ => 0
+        }
+      }).map( l => l.foldRight(0)(_ + _))
     }
   }
 
@@ -137,18 +138,23 @@ class CouchbaseAutoSource[T:Format](bucket: CouchbaseBucket, idKey: String = "_i
   }
 }
 
-abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionContext) extends AutoSourceRouterContoller[String] {
+abstract class CouchbaseAutoSourceController[T](implicit format: Format[T], ctx: ExecutionContext) extends AutoSourceRouterContoller[String] {
 
   def bucket: CouchbaseBucket
   def defaultDesignDocname: String
   def defaultViewName: String
   def idKey: String = "_id"
 
-  lazy val res = new CouchbaseAutoSource[T](bucket, idKey)
+  /** Override to customize deserialization and add validation. */
+  protected val reader: Reads[T]  = format
+  /** Override to customize serialization. */
+  protected val writer: Writes[T] = format
+
+  lazy val res = new CouchbaseAutoSource[T](bucket, idKey, Format(reader, writer))
 
   val writerWithId = Writes[(T, String)] {
     case (t, id) => {
-      val jsObj = res.writer.writes(t).as[JsObject]
+      val jsObj = res.format.writes(t).as[JsObject]
       (jsObj \ idKey) match {
         case _:JsUndefined => jsObj ++ Json.obj(idKey -> id)
         case actualId => jsObj
@@ -157,7 +163,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
   }
 
   def insert: EssentialAction = Action.async(parse.json) { request =>
-    Json.fromJson[T](request.body)(res.reader).map{ t =>
+    Json.fromJson[T](request.body)(res.format).map{ t =>
       res.insert(t).map{ id => Ok(Json.obj("id" -> id)) }
     }.recoverTotal{ e => Future(BadRequest(JsError.toFlatJson(e))) }
   }
@@ -166,7 +172,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
     res.get(id).map{
       case None    => NotFound(s"ID '${id}' not found")
       case Some(tid) => {
-        val jsObj = Json.toJson(tid._1)(res.writer).as[JsObject]
+        val jsObj = Json.toJson(tid._1)(res.format).as[JsObject]
         (jsObj \ idKey) match {
           case _:JsUndefined => Ok( jsObj ++ Json.obj(idKey -> JsString(id)) )
           case actualId => Ok( jsObj )
@@ -180,7 +186,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
   }
 
   def update(id: String): EssentialAction = Action.async(parse.json) { request =>
-    Json.fromJson[T](request.body)(res.reader).map{ t =>
+    Json.fromJson[T](request.body)(res.format).map{ t =>
       res.update(id, t).map{ _ => Ok(Json.obj("id" -> id)) }
     }.recoverTotal{ e => Future(BadRequest(JsError.toFlatJson(e))) }
   }
@@ -208,7 +214,7 @@ abstract class CouchbaseAutoSourceController[T:Format](implicit ctx: ExecutionCo
   }
 
   def batchInsert: EssentialAction = Action.async(parse.json) { request =>
-    Json.fromJson[Seq[T]](request.body)(Reads.seq(res.reader)).map{ elems =>
+    Json.fromJson[Seq[T]](request.body)(Reads.seq(res.format)).map{ elems =>
       res.batchInsert(Enumerator(elems:_*)).map{ nb => Ok(Json.obj("nb" -> nb)) }
     }.recoverTotal{ e => Future(BadRequest(JsError.toFlatJson(e))) }
   }
