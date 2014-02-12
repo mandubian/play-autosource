@@ -1,1 +1,1 @@
-400:org.ancelin.play2.couchbase.CouchbasePlugin
+400:org.reactivecouchbase.play.plugins.CouchbasePlugin
