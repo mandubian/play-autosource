@@ -1,7 +1,6 @@
 package controllers
 
 import play.api.libs.json._
-import org.ancelin.play2.couchbase.Couchbase
 import play.api.Play.current
 import play.autosource.couchbase.CouchbaseAutoSourceController
 import play.api.libs.concurrent.Execution.Implicits._
