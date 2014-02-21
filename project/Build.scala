@@ -98,13 +98,13 @@ object ApplicationBuild extends Build {
       version := "2.0-SNAPSHOT",
 
       resolvers ++= Seq(
-        "Ancelin Repository" at "https://raw.github.com/mathieuancelin/play2-couchbase/master/repository/snapshots",
-        "Spy Repository" at "http://files.couchbase.com/maven2"
+        "ReactiveCouchbase Snapshots" at "https://raw.github.com/ReactiveCouchbase/repository/master/snapshots/"
       ),
       libraryDependencies ++= Seq(
-        "org.ancelin.play2.couchbase" %% "play2-couchbase"   % "0.5-SNAPSHOT",
-        "com.typesafe.play"           %% "play"              % "2.2.1"        % "provided",
-        "com.typesafe.play"           %% "play-cache"        % "2.2.1"        % "provided"
+        "org.reactivecouchbase" %% "reactivecouchbase-core" % "0.2-SNAPSHOT",
+        "org.reactivecouchbase" %% "reactivecouchbase-play" % "0.2-SNAPSHOT",
+        "com.typesafe.play"     %% "play"                   % "2.2.1"         % "provided",
+        "com.typesafe.play"     %% "play-cache"             % "2.2.0"         % "provided"
       )
     )
   ) dependsOn(core)
