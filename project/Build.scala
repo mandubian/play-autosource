@@ -34,8 +34,8 @@ object ApplicationBuild extends Build {
     core,
     reactivemongo,
     datomisca,
-    couchbase
-    /*slick*/
+    couchbase,
+    slick
   )
 
   lazy val core = Project(
@@ -109,8 +109,6 @@ object ApplicationBuild extends Build {
     )
   ) dependsOn(core)
 
-
- /*
   lazy val slick = Project(
     id = "slick",
     base = file("slick"),
@@ -131,7 +129,6 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-*/  
 
   object Publish {
     lazy val settings = Seq(
