@@ -63,8 +63,8 @@ object ApplicationBuild extends Build {
 
       resolvers += "Sonatype Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
       libraryDependencies ++= Seq(
-        "org.reactivemongo" %% "play2-reactivemongo" % "0.10.0-SNAPSHOT",
-        "org.reactivemongo" %% "reactivemongo"       % "0.10.0-SNAPSHOT",
+        "org.reactivemongo" %% "play2-reactivemongo" % "0.11.0-SNAPSHOT",
+        "org.reactivemongo" %% "reactivemongo"       % "0.11.0-SNAPSHOT",
         "com.typesafe.play" %% "play"                % "2.2.1"        % "provided"
       )
     )
