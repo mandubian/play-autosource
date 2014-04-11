@@ -82,8 +82,8 @@ object ApplicationBuild extends Build {
         "clojars"   at "https://clojars.org/repo"
       ),
       libraryDependencies ++= Seq(
-        "com.pellucid"      %% "datomisca"      % "0.7-alpha-3",
-        "com.pellucid"      %% "play-datomisca" % "0.7-alpha-1",
+        "com.pellucid"      %% "datomisca"      % "0.7-alpha-7",
+        "com.pellucid"      %% "play-datomisca" % "0.7-alpha-3",
         "com.datomic"        % "datomic-free"   % "0.9.4324" % "provided" exclude("org.slf4j", "slf4j-nop"),
         "com.typesafe.play" %% "play"           % "2.2.1"    % "provided"
       )
