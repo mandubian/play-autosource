@@ -48,7 +48,7 @@ trait AutoSourceController[Id] extends Controller {
   protected def updateAction:  ActionBuilder[Request] = defaultAction
   protected def deleteAction:  ActionBuilder[Request] = defaultAction
 
-  protected def onBadRequest(request: RequestHeader, error: String): Future[SimpleResult] =
+  protected def onBadRequest(request: RequestHeader, error: String): Future[Result] =
     Play.maybeApplication map { app =>
       app.global.onBadRequest(request, error)
     } getOrElse {
