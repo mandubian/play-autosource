@@ -2,7 +2,6 @@ package play.autosource.datomisca
 
 import clojure.{lang => clj}
 
-import datomisca.DatomicData
 import datomisca.gen.TypedQuery0
 
 object DatomiscaQueryParser {
@@ -53,10 +52,10 @@ object DatomiscaQueryParser {
         Left("The supplied query string does not parse as a map or a vector.")
     }
 
-  def parseTypedQuery0(text: String): Either[String, TypedQuery0[DatomicData]] =
+  def parseTypedQuery0(text: String): Either[String, TypedQuery0[Any]] =
     readEDN(text).right.flatMap { edn =>
       validateDatalog(edn).right.map { query =>
-        new TypedQuery0[DatomicData](query)
+        new TypedQuery0[Any](query)
       }
     }
 

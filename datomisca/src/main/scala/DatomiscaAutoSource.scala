@@ -30,7 +30,7 @@ import play.api.libs.iteratee.{Enumeratee, Enumerator, Iteratee}
 class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.USER)
   ( implicit datomicReader: EntityReader[T],
              datomicWriter: PartialAddEntityWriter[T]
-  ) extends AutoSource[T, Long, TypedQuery0[DatomicData], PartialAddEntity, Int] {
+  ) extends AutoSource[T, Long, TypedQuery0[Any], PartialAddEntity, Int] {
 
   implicit val _conn = conn
 
@@ -81,11 +81,11 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
     }
   }
 
-  override def find(sel: TypedQuery0[DatomicData], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Iterable[(T, Long)]] =
+  override def find(sel: TypedQuery0[Any], limit: Int = 0, skip: Int = 0)(implicit ctx: ExecutionContext): Future[Iterable[(T, Long)]] =
     future {
       val db = conn.database
       val res = Datomic.q(sel, db) map {
-        case DLong(id) =>
+        case id: Long =>
           val entity = db.entity(id)
           DatomicMapping.fromEntity[T](entity) -> id
       } drop (if (skip > 0) skip else 0)
@@ -96,10 +96,10 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
         res
     }
 
-  override def findStream(sel: TypedQuery0[DatomicData], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, Long)]] = {
+  override def findStream(sel: TypedQuery0[Any], skip: Int = 0, pageSize: Int = 0)(implicit ctx: ExecutionContext): Enumerator[TraversableOnce[(T, Long)]] = {
     val db = conn.database
     val res = Datomic.q(sel, db) map {
-      case DLong(id) =>
+      case id: Long =>
         val entity = db.entity(id)
         DatomicMapping.fromEntity[T](entity) -> id
     } drop (if (skip > 0) skip else 0)
@@ -110,17 +110,17 @@ class DatomiscaAutoSource[T](conn: Connection, partition: Partition = Partition.
       Enumerator(res)
   }
 
-  override def batchDelete(sel: TypedQuery0[DatomicData])(implicit ctx: ExecutionContext): Future[Int] = {
-    val txData = Datomic.q(sel, conn.database).map{
-      case DLong(id) => Entity.retract(id)
-    }.toSeq
+  override def batchDelete(sel: TypedQuery0[Any])(implicit ctx: ExecutionContext): Future[Int] = {
+    val txData = Datomic.q(sel, conn.database).iterator map {
+      case id: Long => Entity.retract(id)
+    }
     Datomic.transact(txData).map( _ => txData.length )
   }
 
-  override def batchUpdate(sel: TypedQuery0[DatomicData], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Int] = {
-    val txData = Datomic.q(sel, conn.database).map{
-      case DLong(id) => Entity.add(DId(id), upd)
-    }.toSeq
+  override def batchUpdate(sel: TypedQuery0[Any], upd: PartialAddEntity)(implicit ctx: ExecutionContext): Future[Int] = {
+    val txData = Datomic.q(sel, conn.database).iterator map {
+      case id: Long => Entity.add(DId(id), upd)
+    }
     Datomic.transact(txData).map( _ => txData.length )
   }
 
@@ -202,7 +202,7 @@ abstract class DatomiscaAutoSourceController[T]
       } recoverTotal onJsError(request)
     }
 
-  private def parseQuery[T](request: Request[T]): Either[String, TypedQuery0[DatomicData]] = {
+  private def parseQuery[T](request: Request[T]): Either[String, TypedQuery0[Any]] = {
 
     request.queryString.get("q") match {
       case None =>
@@ -220,7 +220,7 @@ abstract class DatomiscaAutoSourceController[T]
     }
   }
 
-  private def parseQueryUpdate[T](request: Request[T]): Either[String, (TypedQuery0[DatomicData], PartialAddEntity)] =
+  private def parseQueryUpdate[T](request: Request[T]): Either[String, (TypedQuery0[Any], PartialAddEntity)] =
     for {
       q <- (
           request.queryString.get("q") match {
