@@ -340,9 +340,37 @@ We are going to use _Angular resources_ for it even if it's not really the best 
 _(thanks to Paul Dijou for reviewing this code because I repeat I don't know angularJS at all and I wrote this in 20mn without trying to understand anything :D)_
 
 ```javascript
+
+ // my.resources (http://kirkbushell.me/angular-js-using-ng-resource-in-a-more-restful-manner/), in order to support PUT updates
+var module = angular.module('my.resource', [ 'ngResource' ]);
+
+module.factory('Resource', [ '$resource', function ($resource) {
+    return function (url, params, methods) {
+        var defaults = {
+            update: { method: 'put', isArray: false },
+            create: { method: 'post' }
+        };
+
+        methods = angular.extend(defaults, methods);
+
+        var resource = $resource(url, params, methods);
+
+        resource.prototype.$save = function () {
+            if (!this.id) {
+                this.$create();
+            }
+            else {
+                this.$update();
+            }
+        };
+
+        return resource;
+    };
+}]);
+
 var app =
-  // injects ngResource
-  angular.module("app", ["ngResource"])
+  // injects my.resources to support PUT updates
+  angular.module("app", ["my.resources"])
   // creates the Person factory backed by our autosource
   // Please remark the url person/:id which will use transparently our CRUD AutoSource endpoints
   .factory('Person', ["$resource", function($resource){
