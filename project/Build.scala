@@ -19,7 +19,8 @@ object ApplicationBuild extends Build {
   )
 
   val BuildSettings = Defaults.defaultSettings ++ Seq(
-    scalaVersion := "2.10.4",
+    scalaVersion := "2.11.0",
+    crossScalaVersions := Seq("2.10.4", "2.11.0"),
     organization := "play-autosource",
 
     resolvers ++= mandubianRepo
@@ -34,9 +35,9 @@ object ApplicationBuild extends Build {
   ) aggregate(
     core,
     reactivemongo,
-    datomisca,
+    datomisca/*,
     couchbase,
-    slick
+    slick*/
   )
 
   lazy val core = Project(
@@ -46,10 +47,10 @@ object ApplicationBuild extends Build {
       version := coreVersion,
 
       libraryDependencies ++= Seq(
-        "play-json-zipper"  %% "play-json-zipper"  % "1.0"                      ,
+        "com.mandubian"     %% "play-json-zipper"  % "1.2"                      ,
         "com.typesafe.play" %% "play-json"         % "2.3.1"                    ,
         "com.typesafe.play" %% "play"              % "2.3.1"        % "provided",
-        "org.specs2"        %% "specs2"            % "1.13"         % "test"    ,
+        "org.specs2"        %% "specs2"            % "2.3.12"         % "test"  ,
         "junit"              % "junit"             % "4.8"          % "test"
       )
     )
@@ -89,7 +90,7 @@ object ApplicationBuild extends Build {
       )
     )
   ) dependsOn(core)
-
+/*
   lazy val couchbase = Project(
     id = "couchbase",
     base = file("couchbase"),
@@ -101,8 +102,8 @@ object ApplicationBuild extends Build {
         "ReactiveCouchbase Snapshots" at "https://raw.github.com/ReactiveCouchbase/repository/master/snapshots/"
       ),
       libraryDependencies ++= Seq(
-        "org.reactivecouchbase" %% "reactivecouchbase-core" % "0.2-SNAPSHOT",
-        "org.reactivecouchbase" %% "reactivecouchbase-play" % "0.2-SNAPSHOT",
+        "org.reactivecouchbase" %% "reactivecouchbase-core" % "0.3-SNAPSHOT",
+        "org.reactivecouchbase" %% "reactivecouchbase-play" % "0.3-SNAPSHOT",
         "com.typesafe.play"     %% "play"                   % "2.3.1"         % "provided",
         "com.typesafe.play"     %% "play-cache"             % "2.3.1"         % "provided"
       )
@@ -123,13 +124,13 @@ object ApplicationBuild extends Build {
       ),
 
       libraryDependencies ++= Seq(
-        "com.typesafe.play"   %%  "play-slick"    % "0.5.0.4",
+        "com.typesafe.play"   %%  "play-slick"    % "0.8.0-RC1",
         "com.typesafe.play"   %%  "play"          % "2.3.1"        % "provided",
         "com.typesafe.play"   %%  "play-jdbc"     % "2.3.1"        % "provided"
       )
     )
   ) dependsOn(core)
-
+*/
   object Publish {
     lazy val settings = Seq(
       publishMavenStyle := true,
