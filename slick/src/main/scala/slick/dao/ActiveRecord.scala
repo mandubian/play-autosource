@@ -2,7 +2,7 @@ package slick.dao
 
 
 import scala.language.implicitConversions
-import scala.slick.session.Session
+import play.api.db.slick.Session
 
 
 trait ActiveRecord[E <: Entity[E]] {
@@ -20,4 +20,3 @@ trait ActiveRecord[E <: Entity[E]] {
   }
 
 }
-

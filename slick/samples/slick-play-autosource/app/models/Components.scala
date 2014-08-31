@@ -1,10 +1,10 @@
 package models
 
 import slick.dao.SlickDaoProfile
-import scala.slick.driver.ExtendedProfile
+import scala.slick.driver.JdbcProfile
 import play.api.db.slick.DB
 
-class Components(override val profile: ExtendedProfile)
+class Components(override val profile: JdbcProfile)
   extends PersonComponent  with SlickDaoProfile
 
 object Components {

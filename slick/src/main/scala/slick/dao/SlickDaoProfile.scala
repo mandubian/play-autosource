@@ -16,10 +16,11 @@
 package slick.dao
 
 import scala.languageFeature.implicitConversions
-import scala.slick.driver.ExtendedProfile
+import scala.slick.driver.JdbcProfile
+import scala.slick.lifted.Tag
 import play.api.db.slick.DB
 import play.api.Play.current
-import scala.slick.session.Session
+import play.api.db.slick.Session
 
 trait SlickDao[E <: Entity[E]] {
 
@@ -37,28 +38,29 @@ trait SlickDao[E <: Entity[E]] {
 
   def findById(id: Long)(implicit session: Session): E
 
-  def pagesList(pageIndex: Int, limit: Int)(implicit session: Session): List[E]
+  def pagesList(pageIndex: Int, limit: Int)(implicit session: Session): Seq[E]
 
-  def list(implicit session: Session): List[E]
+  def list(implicit session: Session): Seq[E]
 }
 
 
 trait SlickDaoProfile {
-  val profile: ExtendedProfile
+  val profile: JdbcProfile
 
   import profile.simple._
 
-  abstract class BaseTable[E <: Entity[E]](tableName: String)
-    extends Table[E](tableName) with SlickDao[E] {
+  abstract class BaseTable[E <: Entity[E]](tag: Tag, tableName: String)
+    extends Table[E](tag, tableName) {
 
     def id: Column[Long]
+  }
 
+  abstract class BaseTableQuery[E <: Entity[E], T <: BaseTable[E]](cons: Tag ⇒ T) extends TableQuery[T](cons) with SlickDao[E] {
     def count(implicit session: Session): Int =
-      Query(this.length).first()
-
+      this.length.run
 
     private def addWithAutoInc(entity: E)(implicit session: Session): Long =
-      this.*.returning(this.id).insert(entity)
+      (this returning this.map(_.id)) += entity
 
     def add(entity: E)(implicit session: Session): E = {
       val id: Long = addWithAutoInc(entity)
@@ -71,8 +73,8 @@ trait SlickDaoProfile {
         case None => throw new CannotUpdateNonPersistedEntityException(entity)
       }
 
-
     private def filterQuery(id: Long) = this.filter(_.id === id)
+
 
     def delete(entity: E)(implicit session: Session): Boolean =
       entity.id match {
@@ -80,24 +82,19 @@ trait SlickDaoProfile {
         case None => false
       }
 
-
     def deleteById(id: Long)(implicit session: Session): Boolean = filterQuery(id).delete > 0
 
 
-    def findOptionById(id: Long)(implicit session: Session): Option[E] = this.createFinderBy(_.id).firstOption(id)
+    def findOptionById(id: Long)(implicit session: Session): Option[E] = filterQuery(id).firstOption
 
-    def findById(id: Long)(implicit session: Session): E = findOptionById(id).get
+    def findById(id: Long)(implicit session: Session): E = filterQuery(id).first
 
 
-    def pagesList(pageIndex: Int, limit: Int)(implicit session: Session): List[E] = {
-      val query = for {entity <- this} yield entity
-      query.list.drop(pageIndex).take(limit)
-    }
+    def pagesList(pageIndex: Int, limit: Int)(implicit session: Session): Seq[E] =
+      this.drop(pageIndex).take(limit).list
 
-    def list(implicit session: Session): List[E] = {
-      val query = for {entity <- this} yield entity
-      query.list
-    }
+    def list(implicit session: Session): Seq[E] =
+      this.list
 
   }
 
@@ -106,4 +103,3 @@ trait SlickDaoProfile {
 
 class CannotUpdateNonPersistedEntityException(entity: Entity[_])
   extends RuntimeException(s"$entity is not persisted and therefore can't be updated")
-
