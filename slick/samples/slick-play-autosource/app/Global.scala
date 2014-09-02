@@ -10,8 +10,8 @@ object Global extends GlobalSettings {
 
   override def onStart(app: Application) {
     DB.withTransaction { implicit session : Session =>
-      Persons.add(Person("John", "Doe"))
-      Persons.add(Person("Joao", "da Silva"))
+      Persons.insert(Person("John", "Doe"))
+      Persons.insert(Person("Joao", "da Silva"))
     }
   }
 }

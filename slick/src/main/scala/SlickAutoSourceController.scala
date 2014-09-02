@@ -21,13 +21,13 @@ import play.api.mvc._
 import play.api.Logger
 
 import play.autosource.core.AutoSourceRouterContoller
-import slick.dao.{SlickDao, Entity}
+import slick.dao.{SlickAutoSource, Entity}
 import play.api.libs.json._
 import play.api.db.slick._
 
-abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends AutoSourceRouterContoller[Long] {
+abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickAutoSource] extends AutoSourceRouterContoller[Long] {
 
-  def dao: SlickDao[E] = implicitly[SlickDao[E]]
+  def dao: SlickAutoSource[E] = implicitly[SlickAutoSource[E]]
 
   val reader: Reads[E] = implicitly[Reads[E]]
   val writer: Writes[E] = implicitly[Writes[E]]
@@ -40,7 +40,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
       Json.fromJson[E](jsValue)(reader).map { entity =>
         val persistedEntity: E = {
           Logger.debug("Creating entity in tx: " + entity)
-          dao.add(entity)(request.dbSession)
+          dao.insert(entity)(request.dbSession)
         }
         Created(writer.writes(persistedEntity))
       }.recoverTotal { e => BadRequest(JsError.toFlatJson(e)) }
@@ -49,7 +49,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
 
    def get(id: Long): EssentialAction = DBAction { request =>
-     val persistedEntityOpt = dao.findOptionById(id)(request.dbSession)
+     val persistedEntityOpt = dao.get(id)(request.dbSession)
      persistedEntityOpt match {
        case Some(entity) => Ok(writer.writes(entity))
        case None => entityNotFound(id)
@@ -58,7 +58,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
 
    def delete(id: Long): EssentialAction = DBAction { request =>
-     dao.deleteById(id)(request.dbSession) match {
+     dao.delete(id)(request.dbSession) match {
        case false => entityNotFound(id)
        case true  => Ok(Json.toJson(id)(idWriter))
      }
@@ -83,17 +83,17 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    val entities = dao.pagesList(skip, limit)(requestWithSession.dbSession)
+    val entities = dao.find(limit, skip)(requestWithSession.dbSession)
     Ok(Json.toJson(entities))
   }
 
   def findStream: EssentialAction = DBAction { requestWithSession =>
     val request = requestWithSession.request
 
+    val limit = request.queryString.get("limit").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
     val skip = request.queryString.get("skip").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
-    val pageSize = request.queryString.get("pageSize").flatMap(_.headOption.map(_.toInt)).getOrElse(0)
 
-    val entities = dao.pagesList(skip, pageSize)(requestWithSession.dbSession)
+    val entities = dao.find(limit, skip)(requestWithSession.dbSession)
     Ok(Json.toJson(entities))
   }
 
@@ -102,7 +102,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
     parseRequestWithSession(request) { jsValue =>
       Json.fromJson[Seq[E]](jsValue)(Reads.seq(reader)).map{ elems =>
         elems.foreach { entity =>
-          dao.add(entity)(request.dbSession)
+          dao.insert(entity)(request.dbSession)
         }
         Ok(Json.obj("nb" -> elems.size))
       }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
@@ -113,7 +113,7 @@ abstract class SlickAutoSourceController[E <: Entity[E]:Format:SlickDao] extends
 
     parseRequestWithSession(request) { jsValue =>
       Json.fromJson[Seq[Long]](jsValue)(Reads.seq(idReader)).map { ids =>
-        ids.foreach(id => dao.deleteById(id)(request.dbSession))
+        ids.foreach(id => dao.delete(id)(request.dbSession))
         Ok(Json.obj("nb" -> ids.size))
       }.recoverTotal{ e => BadRequest(JsError.toFlatJson(e)) }
     }

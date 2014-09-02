@@ -7,12 +7,12 @@ import play.api.db.slick.Session
 
 trait ActiveRecord[E <: Entity[E]] {
 
-  val slickDao : SlickDao[E]
+  val slickDao : SlickAutoSource[E]
 
   implicit def toActiveRecord(entity: E) = new {
     def save(implicit session: Session): E = {
       entity.id match {
-        case None => slickDao.add(entity)
+        case None => slickDao.insert(entity)
         case _ => slickDao.update(entity); entity
       }
     }
