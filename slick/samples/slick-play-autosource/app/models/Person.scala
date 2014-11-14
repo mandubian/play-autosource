@@ -18,7 +18,7 @@ trait PersonComponent  { this: SlickDaoProfile =>
 
   import profile.simple._
 
-  implicit object Persons extends BaseTable[Person]("persons") {
+  class PersonsTable(tag: Tag) extends BaseTable[Person](tag, "persons") {
 
     def id = column[Long]("id", O.PrimaryKey, O.AutoInc)
 
@@ -26,8 +26,8 @@ trait PersonComponent  { this: SlickDaoProfile =>
 
     def lastName = column[String]("last_name")
 
-    def * = firstName ~ lastName ~ id.? <>(Person.apply _, Person.unapply _)
+    def * = (firstName, lastName, id.?) <> ((Person.apply _).tupled, Person.unapply _)
   }
+
+  implicit object Persons extends BaseTableQuery[Person, PersonsTable](new PersonsTable(_)) {}
 }
-
-

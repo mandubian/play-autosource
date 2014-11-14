@@ -16,7 +16,7 @@
 package slick.dao
 
 
-trait Entity[E <: Entity[E]] {
+trait Entity[E] {
   // self-typing to E to force withId to return this type
   self: E =>
 
