@@ -82,7 +82,7 @@ trait SlickDaoProfile {
       }
 
     def find(limit: Int = 0, skip: Int = 0)(implicit session: Session): Seq[E] =
-      this.drop(skip).take(limit).list
+      if (limit > 0) this.drop(skip).take(limit).list else this.drop(skip).list
 
   }
 }
